@@ -55,7 +55,6 @@ ROLE_OVERSPEED = 1387571297705394250
 CANAL_STAFF = 1415964136550043689
 CANAL_RANKING = 1416021337519947858
 
-
 # ------------------------------
 # Función de inicialización de mensajes fijos
 # ------------------------------
@@ -94,7 +93,7 @@ async def on_ready():
         if uid not in turnos_activos:
             return await interaction.followup.send("❌ No tienes un turno activo.", ephemeral=True)
 
-        if uid in tuneos_activos:  # Cierra tuneo pendiente
+        if uid in tuneos_activos:
             dinero_tuneo = tuneos_activos.pop(uid)["dinero"]
             turnos_activos[uid]["dinero"] += dinero_tuneo
             if uid not in historial_tuneos:
@@ -114,15 +113,12 @@ async def on_ready():
             historial_tuneos[uid] = {"dinero_total": 0, "tuneos": 0, "detalle": []}
         historial_tuneos[uid]["dinero_total"] += total_dinero
 
-        # Mensaje privado
         await interaction.followup.send(
             f"✅ Turno finalizado. Total dinero acumulado: ${total_dinero:,}\n⏱️ Duración: {duracion}",
             ephemeral=True
         )
 
-        # Reporte en canal staff
-        canal = bot.get_channel(CANAL_STAFF)
-        await canal.send(
+        await canal_staff.send(
             f"📋 **{interaction.user.display_name}** finalizó su turno.\n"
             f"⏱️ Duración: {duracion}\n"
             f"💰 Dinero total: ${total_dinero:,}\n"
@@ -131,7 +127,6 @@ async def on_ready():
 
     button_finalizar_turno.callback = finalizar_turno_callback
     view_turno.add_item(button_finalizar_turno)
-
     await canal_turnos.send("Pulsa los botones para gestionar tu turno:", view=view_turno)
 
     # --------------------------
@@ -174,10 +169,8 @@ async def on_ready():
             (datetime.now(zona), dinero_tuneo, "Tuneo completado")
         )
 
-        # Bonos automáticos
         if historial_tuneos[uid]["tuneos"] in [50, 100, 200]:
-            canal = bot.get_channel(CANAL_STAFF)
-            await canal.send(
+            await canal_staff.send(
                 f"🎉 ¡Felicidades {interaction.user.mention}! Has alcanzado {historial_tuneos[uid]['tuneos']} tuneos, premio disponible 🎁."
             )
 
@@ -188,14 +181,38 @@ async def on_ready():
 
     button_finalizar_tuneo.callback = finalizar_tuneo_callback
     view_tuneos.add_item(button_finalizar_tuneo)
-
     await canal_tuneos.send("Pulsa los botones para registrar tus tuneos y finalizar cada tuneo:", view=view_tuneos)
+
+    # --------------------------
+    # Mensaje Staff - Historial total con botón
+    # --------------------------
+    view_historial = View()
+    button_historial = Button(label="📋 Historial Total", style=discord.ButtonStyle.gray)
+
+    async def historial_callback(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        if not any(role.id in ROLES_HISTORIAL_TOTAL for role in interaction.user.roles):
+            await interaction.followup.send("❌ No tienes permiso para ver el historial completo.", ephemeral=True)
+            return
+        if not historial_tuneos:
+            await interaction.followup.send("❌ No hay tuneos registrados.", ephemeral=True)
+            return
+        msg = "📋 Historial completo de tuneos:\n"
+        for uid, datos in historial_tuneos.items():
+            user = interaction.guild.get_member(uid)
+            nombre = user.display_name if user else f"ID:{uid}"
+            total_tuneos = datos.get("tuneos", 0)
+            msg += f"- {nombre}: {total_tuneos} tuneos\n"
+        await interaction.followup.send(msg, ephemeral=True)
+
+    button_historial.callback = historial_callback
+    view_historial.add_item(button_historial)
+    await canal_staff.send("Pulsa el botón para ver el historial completo de tuneos:", view=view_historial)
 
     # --------------------------
     # Ranking automático
     # --------------------------
     ranking_task.start()
-
 
 # ------------------------------
 # Ranking semanal y mensual
@@ -228,7 +245,6 @@ async def ranking_task():
                 msg += f"{i}️⃣ {nombre} - {datos['tuneos']} tuneos\n"
             await canal.send(msg)
 
-
 # ------------------------------
 # Comando staff: historial detallado
 # ------------------------------
@@ -245,7 +261,6 @@ async def historial(ctx, member: discord.Member):
     msg += f"\n🔧 Total: {datos['tuneos']} tuneos | 💰 ${datos['dinero_total']:,}"
     await ctx.send(msg)
 
-
 # ------------------------------
 # Comando staff: limpiar mensajes
 # ------------------------------
@@ -254,7 +269,6 @@ async def historial(ctx, member: discord.Member):
 async def borrar(ctx, cantidad: int):
     await ctx.channel.purge(limit=cantidad + 1)
     await ctx.send(f"🧹 Se borraron {cantidad} mensajes.", delete_after=5)
-
 
 # ------------------------------
 # Identificación de mecánicos
@@ -297,6 +311,5 @@ async def on_message(message):
                 )
 
     await bot.process_commands(message)
-
 
 bot.run(os.getenv("DISCORD_TOKEN"))
