@@ -17,21 +17,17 @@ zona = pytz.timezone("Europe/Madrid")
 
 precios_tuneos = {
     "Frenos": 80000,
-    "Neón": 80000,
-    "Xenón": 80000,
     "Motor": 80000,
-    "Faldones": 80000,
-    "Vidrios": 80000,
     "Suspensión": 80000,
     "Transmisión": 80000,
-    "Matrícula": 105000,
-    "Capó": 105000,
     "Blindaje": 105000,
-    "Color perlado": 105000,
     "Turbo": 100000,
     "Full tuning con blindaje": 525000,
     "Full tuning sin blindaje": 450000,
-    "Cambio estético": 20000
+    "Cambio estético": 20000,
+    "Reparación en el taller": 10000,
+    "Reparación en la calle": 15000,
+    "Kit de reparación": 50000
 }
 
 # Turnos activos
