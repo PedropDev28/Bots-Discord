@@ -7,7 +7,7 @@ import os
 
 # 🔹 Configurar intents
 intents = discord.Intents.default()
-intents.message_content = True  # Para leer mensajes en servidores
+intents.message_content = True
 intents.guilds = True
 intents.members = True
 
@@ -19,15 +19,35 @@ turnos = {}
 # Zona horaria España
 zona = pytz.timezone("Europe/Madrid")
 
+# Diccionario con precios de los tuneos
+precios_tuneos = {
+    "Frenos": 80000,
+    "Motor": 80000,
+    "Suspensión": 80000,
+    "Transmisión": 80000,
+    "Blindaje": 105000,
+    "Turbo": 100000,
+    "Full tuning con blindaje": 525000,
+    "Full tuning sin blindaje": 450000,
+    "Cambio estético": 20000,
+    "Reparación en el taller": 10000,
+    "Reparación en la calle": 15000,
+    "Kit de reparación": 50000
+}
+
+# Diccionario para registrar tuneos por usuario
+usuarios_tuneos = {}
+
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
 
-# Comando de prueba rápido
+# Comando de prueba
 @bot.command()
 async def ping(ctx):
     await ctx.send("🏓 Pong!")
 
+# Comando de turnos
 @bot.command()
 async def turno(ctx):
     """Comando para enviar el botón de turno"""
@@ -35,17 +55,15 @@ async def turno(ctx):
 
     async def button_callback(interaction: discord.Interaction):
         user_id = interaction.user.id
-        now = datetime.now(zona)  # Hora correcta en España
+        now = datetime.now(zona)
 
         if user_id not in turnos:
-            # Si no tiene turno, lo inicia
             turnos[user_id] = now
             await interaction.response.send_message(
                 f"🔧 {interaction.user.mention} ha iniciado su turno a las **{now.strftime('%H:%M:%S')}**",
                 ephemeral=False
             )
         else:
-            # Si ya tenía turno, lo finaliza y calcula la diferencia
             inicio = turnos.pop(user_id)
             diff = now - inicio
             horas, resto = divmod(diff.total_seconds(), 3600)
@@ -61,5 +79,52 @@ async def turno(ctx):
     view.add_item(button)
     await ctx.send("Pulsa el botón para iniciar/finalizar tu turno:", view=view)
 
-# Arrancar el bot usando la variable de entorno
+# Comando para iniciar el menú de tuneos
+@bot.command()
+async def tuning(ctx):
+    """Envía botones para cada tuneo disponible"""
+    view = View()
+    
+    for tuneo, precio in precios_tuneos.items():
+        button = Button(label=f"{tuneo} (${precio})", style=discord.ButtonStyle.blurple)
+
+        async def tuneo_callback(interaction: discord.Interaction, t=tuneo, p=precio):
+            user_id = interaction.user.id
+            if user_id not in usuarios_tuneos:
+                usuarios_tuneos[user_id] = {}
+            if t not in usuarios_tuneos[user_id]:
+                usuarios_tuneos[user_id][t] = 0
+            usuarios_tuneos[user_id][t] += 1
+
+            total = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in usuarios_tuneos[user_id].items())
+
+            await interaction.response.send_message(
+                f"🔧 {interaction.user.mention} realizó {t}.\n"
+                f"💰 Total acumulado: ${total:,}",
+                ephemeral=False
+            )
+
+        button.callback = tuneo_callback
+        view.add_item(button)
+
+    await ctx.send("Selecciona el tuneo que deseas realizar:", view=view)
+
+# Comando para ver el historial de tuneos de un usuario
+@bot.command()
+async def mis_tuneos(ctx):
+    user_id = ctx.author.id
+    if user_id not in usuarios_tuneos or not usuarios_tuneos[user_id]:
+        await ctx.send(f"❌ {ctx.author.mention}, no tienes tuneos realizados.")
+        return
+
+    msg = f"🔧 {ctx.author.mention}, tus tuneos:\n"
+    total = 0
+    for t, cantidad in usuarios_tuneos[user_id].items():
+        subtotal = cantidad * precios_tuneos[t]
+        total += subtotal
+        msg += f"- {t}: {cantidad} (${subtotal:,})\n"
+    msg += f"💰 Total acumulado: ${total:,}"
+    await ctx.send(msg)
+
+# Arrancar el bot
 bot.run(os.getenv("DISCORD_TOKEN"))
