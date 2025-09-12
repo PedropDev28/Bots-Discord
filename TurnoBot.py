@@ -1,18 +1,32 @@
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
-import datetime
+from datetime import datetime
+import pytz
 import os
 
+# 🔹 Configurar intents
 intents = discord.Intents.default()
+intents.message_content = True  # Para leer mensajes en servidores
+intents.guilds = True
+intents.members = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Diccionario para guardar las horas de inicio por usuario
 turnos = {}
 
+# Zona horaria España
+zona = pytz.timezone("Europe/Madrid")
+
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
+
+# Comando de prueba rápido
+@bot.command()
+async def ping(ctx):
+    await ctx.send("🏓 Pong!")
 
 @bot.command()
 async def turno(ctx):
@@ -21,7 +35,7 @@ async def turno(ctx):
 
     async def button_callback(interaction: discord.Interaction):
         user_id = interaction.user.id
-        now = datetime.datetime.now()
+        now = datetime.now(zona)  # Hora correcta en España
 
         if user_id not in turnos:
             # Si no tiene turno, lo inicia
@@ -47,4 +61,5 @@ async def turno(ctx):
     view.add_item(button)
     await ctx.send("Pulsa el botón para iniciar/finalizar tu turno:", view=view)
 
+# Arrancar el bot usando la variable de entorno
 bot.run(os.getenv("DISCORD_TOKEN"))
