@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord.ui import Button, View
 import datetime
+import os
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -46,4 +47,4 @@ async def turno(ctx):
     view.add_item(button)
     await ctx.send("Pulsa el botón para iniciar/finalizar tu turno:", view=view)
 
-bot.run("TU_TOKEN_AQUI")
+bot.run("DISCORD_TOKEN")
