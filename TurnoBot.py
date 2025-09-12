@@ -64,15 +64,17 @@ async def on_ready():
 
     async def iniciar_callback(interaction: discord.Interaction):
         uid = interaction.user.id
-        # Solo roles permitidos
+        # Evitar interacción fallida
+        await interaction.response.defer(ephemeral=True)
+
         if not any(role.id in ROLES_TUNEO for role in interaction.user.roles):
-            await interaction.response.send_message("❌ No tienes permiso para iniciar un turno.", ephemeral=True)
+            await interaction.followup.send("❌ No tienes permiso para iniciar un turno.", ephemeral=True)
             return
         if uid in turnos_tuneo:
-            await interaction.response.send_message("❌ Ya tienes un turno activo.", ephemeral=True)
+            await interaction.followup.send("❌ Ya tienes un turno activo.", ephemeral=True)
             return
         turnos_tuneo[uid] = {"dinero": 0}
-        await interaction.response.send_message("✅ Tu turno ha comenzado.", ephemeral=True)
+        await interaction.followup.send("✅ Tu turno ha comenzado.", ephemeral=True)
 
     button_turno.callback = iniciar_callback
     view_turno.add_item(button_turno)
@@ -87,12 +89,14 @@ async def on_ready():
 
         async def tuneo_callback(interaction: discord.Interaction, t=tuneo, p=precio):
             uid = interaction.user.id
+            await interaction.response.defer(ephemeral=True)
+
             if uid not in turnos_tuneo:
-                await interaction.response.send_message("❌ No tienes un turno activo.", ephemeral=True)
+                await interaction.followup.send("❌ No tienes un turno activo.", ephemeral=True)
                 return
             turnos_tuneo[uid]["dinero"] += p
             total_dinero = turnos_tuneo[uid]["dinero"]
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"🔧 Añadido {t} a tu turno.\n💰 Total acumulado: ${total_dinero:,}",
                 ephemeral=True
             )
@@ -105,8 +109,10 @@ async def on_ready():
 
     async def finalizar_callback(interaction: discord.Interaction):
         uid = interaction.user.id
+        await interaction.response.defer(ephemeral=True)
+
         if uid not in turnos_tuneo:
-            await interaction.response.send_message("❌ No tienes un turno activo.", ephemeral=True)
+            await interaction.followup.send("❌ No tienes un turno activo.", ephemeral=True)
             return
         total_dinero = turnos_tuneo[uid].pop("dinero")
         turnos_tuneo.pop(uid)
@@ -117,7 +123,7 @@ async def on_ready():
         historial_tuneos[uid]["dinero"] += total_dinero
         historial_tuneos[uid]["tuneos"] += 1  # 1 tuneo completo
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Turno finalizado.\n💰 Total dinero de este turno: ${total_dinero:,}\n🎯 Tuneo registrado: 1",
             ephemeral=True
         )
@@ -133,12 +139,13 @@ async def on_ready():
     button_historial = Button(label="📋 Historial Total", style=discord.ButtonStyle.gray)
 
     async def historial_callback(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         # Solo roles permitidos
         if not any(role.id in ROLES_HISTORIAL_TOTAL for role in interaction.user.roles):
-            await interaction.response.send_message("❌ No tienes permiso para ver el historial completo.", ephemeral=True)
+            await interaction.followup.send("❌ No tienes permiso para ver el historial completo.", ephemeral=True)
             return
         if not historial_tuneos:
-            await interaction.response.send_message("❌ No hay tuneos registrados.", ephemeral=True)
+            await interaction.followup.send("❌ No hay tuneos registrados.", ephemeral=True)
             return
         msg = "📋 Historial completo de tuneos:\n"
         for uid, datos in historial_tuneos.items():
@@ -146,7 +153,7 @@ async def on_ready():
             nombre = user.display_name if user else f"ID:{uid}"
             total_tuneos = datos.get("tuneos", 0)
             msg += f"- {nombre}: {total_tuneos} tuneos\n"
-        await interaction.response.send_message(msg, ephemeral=True)
+        await interaction.followup.send(msg, ephemeral=True)
 
     button_historial.callback = historial_callback
     view_historial.add_item(button_historial)
