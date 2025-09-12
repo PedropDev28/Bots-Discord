@@ -48,6 +48,9 @@ historial_tuneos = {}    # user_id -> {"dinero_total": total_acumulado, "tuneos"
 
 # Canal de identificación de mecánicos
 CANAL_IDENTIFICACION = 1398583186610716682
+ROLE_APRENDIZ = 1385301435456950390        # primer rol que debe asignar
+ROLE_OVERSPEED= 1387571297705394250        # segundo rol que debe asignar
+
 
 # ------------------------------
 # Función de inicialización de mensajes fijos
@@ -197,12 +200,25 @@ async def on_message(message):
             user_id_ic = match.group(1)
             nombre_ic = match.group(2)
             try:
+                # Cambiar apodo
                 nuevo_apodo = f"🧰 APR | {nombre_ic} | {user_id_ic}"
                 await message.author.edit(nick=nuevo_apodo)
+
+                # Asignar roles
+                rol1 = message.guild.get_role(ROLE_APRENDIZ)
+                rol2 = message.guild.get_role(ROLE_OVERSPEED)
+                if rol1:
+                    await message.author.add_roles(rol1)
+                if rol2:
+                    await message.author.add_roles(rol2)
+
+                # Reaccionar ✅
                 await message.add_reaction("✅")
+
             except discord.Forbidden:
                 await message.add_reaction("⚠️")
         else:
+            # Formato incorrecto
             await message.add_reaction("❌")
             try:
                 await message.author.send(
