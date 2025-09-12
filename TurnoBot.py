@@ -13,9 +13,6 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Diccionario para guardar las horas de inicio por usuario
-turnos = {}
-
 # Zona horaria España
 zona = pytz.timezone("Europe/Madrid")
 
@@ -35,8 +32,11 @@ precios_tuneos = {
     "Kit de reparación": 50000
 }
 
-# Diccionario para registrar tuneos por usuario
-usuarios_tuneos = {}
+# Turnos de tuneo activos: user_id -> {tuneo: cantidad}
+turnos_tuneo = {}
+
+# Historial general: user_id -> {tuneo: cantidad total}
+historial_tuneos = {}
 
 @bot.event
 async def on_ready():
@@ -47,83 +47,87 @@ async def on_ready():
 async def ping(ctx):
     await ctx.send("🏓 Pong!")
 
-# Comando de turnos
+# Comando para iniciar un turno de tuneo
 @bot.command()
-async def turno(ctx):
-    """Comando para enviar el botón de turno"""
-    button = Button(label="⏱️ Iniciar / Finalizar turno", style=discord.ButtonStyle.green)
+async def iniciar_tuneo(ctx):
+    user_id = ctx.author.id
+    if user_id in turnos_tuneo:
+        await ctx.send(f"❌ {ctx.author.mention}, ya tienes un turno de tuneo activo.")
+        return
 
-    async def button_callback(interaction: discord.Interaction):
-        user_id = interaction.user.id
-        now = datetime.now(zona)
-
-        if user_id not in turnos:
-            turnos[user_id] = now
-            await interaction.response.send_message(
-                f"🔧 {interaction.user.mention} ha iniciado su turno a las **{now.strftime('%H:%M:%S')}**",
-                ephemeral=False
-            )
-        else:
-            inicio = turnos.pop(user_id)
-            diff = now - inicio
-            horas, resto = divmod(diff.total_seconds(), 3600)
-            minutos, segundos = divmod(resto, 60)
-            await interaction.response.send_message(
-                f"✅ {interaction.user.mention} ha finalizado su turno.\n"
-                f"⏰ Duración: {int(horas)}h {int(minutos)}m {int(segundos)}s",
-                ephemeral=False
-            )
-
-    button.callback = button_callback
+    turnos_tuneo[user_id] = {}
     view = View()
-    view.add_item(button)
-    await ctx.send("Pulsa el botón para iniciar/finalizar tu turno:", view=view)
 
-# Comando para iniciar el menú de tuneos
-@bot.command()
-async def tuning(ctx):
-    """Envía botones para cada tuneo disponible"""
-    view = View()
-    
+    # Botones para cada tuneo
     for tuneo, precio in precios_tuneos.items():
-        button = Button(label=f"{tuneo} (${precio})", style=discord.ButtonStyle.blurple)
+        button = Button(label=f"{tuneo} (${precio:,})", style=discord.ButtonStyle.blurple)
 
         async def tuneo_callback(interaction: discord.Interaction, t=tuneo, p=precio):
-            user_id = interaction.user.id
-            if user_id not in usuarios_tuneos:
-                usuarios_tuneos[user_id] = {}
-            if t not in usuarios_tuneos[user_id]:
-                usuarios_tuneos[user_id][t] = 0
-            usuarios_tuneos[user_id][t] += 1
+            uid = interaction.user.id
+            if uid not in turnos_tuneo:
+                await interaction.response.send_message("❌ No tienes un turno activo. Usa !iniciar_tuneo", ephemeral=True)
+                return
 
-            total = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in usuarios_tuneos[user_id].items())
+            turno_actual = turnos_tuneo[uid]
+            if t not in turno_actual:
+                turno_actual[t] = 0
+            turno_actual[t] += 1
 
+            total_turno = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in turno_actual.items())
             await interaction.response.send_message(
-                f"🔧 {interaction.user.mention} realizó {t}.\n"
-                f"💰 Total acumulado: ${total:,}",
+                f"🔧 {interaction.user.mention} añadió {t} a su turno.\n"
+                f"💰 Total acumulado en este turno: ${total_turno:,}",
                 ephemeral=False
             )
 
         button.callback = tuneo_callback
         view.add_item(button)
 
-    await ctx.send("Selecciona el tuneo que deseas realizar:", view=view)
+    # Botón para finalizar el turno
+    finalizar = Button(label="✅ Finalizar tuneo", style=discord.ButtonStyle.green)
 
-# Comando para ver el historial de tuneos de un usuario
+    async def finalizar_callback(interaction: discord.Interaction):
+        uid = interaction.user.id
+        if uid not in turnos_tuneo:
+            await interaction.response.send_message("❌ No tienes un turno activo.", ephemeral=True)
+            return
+
+        turno_actual = turnos_tuneo.pop(uid)
+        if uid not in historial_tuneos:
+            historial_tuneos[uid] = {}
+
+        for t, cantidad in turno_actual.items():
+            if t not in historial_tuneos[uid]:
+                historial_tuneos[uid][t] = 0
+            historial_tuneos[uid][t] += cantidad
+
+        total_final = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in turno_actual.items())
+        await interaction.response.send_message(
+            f"✅ {interaction.user.mention} ha finalizado su turno de tuneo.\n"
+            f"💰 Total de este turno: ${total_final:,}",
+            ephemeral=False
+        )
+
+    finalizar.callback = finalizar_callback
+    view.add_item(finalizar)
+
+    await ctx.send(f"{ctx.author.mention}, tu turno de tuneo ha comenzado. Pulsa los botones para agregar tuneos:", view=view)
+
+# Comando para ver tu historial de tuneos
 @bot.command()
-async def mis_tuneos(ctx):
+async def historial(ctx):
     user_id = ctx.author.id
-    if user_id not in usuarios_tuneos or not usuarios_tuneos[user_id]:
+    if user_id not in historial_tuneos or not historial_tuneos[user_id]:
         await ctx.send(f"❌ {ctx.author.mention}, no tienes tuneos realizados.")
         return
 
-    msg = f"🔧 {ctx.author.mention}, tus tuneos:\n"
+    msg = f"🔧 {ctx.author.mention}, historial de tus tuneos:\n"
     total = 0
-    for t, cantidad in usuarios_tuneos[user_id].items():
+    for t, cantidad in historial_tuneos[user_id].items():
         subtotal = cantidad * precios_tuneos[t]
         total += subtotal
         msg += f"- {t}: {cantidad} (${subtotal:,})\n"
-    msg += f"💰 Total acumulado: ${total:,}"
+    msg += f"💰 Total acumulado en todos tus tuneos: ${total:,}"
     await ctx.send(msg)
 
 # Arrancar el bot
