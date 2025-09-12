@@ -4,6 +4,7 @@ from discord.ui import Button, View
 from datetime import datetime
 import pytz
 import os
+import re
 
 # ------------------------------
 # Configuración inicial
@@ -35,8 +36,8 @@ precios_tuneos = {
 # ------------------------------
 # Roles por ID
 # ------------------------------
-ROLES_TUNEO = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1391019755267424347, 1385301435456950391, 1385301435456950390, 1415954460202766386 ]  # IDs de roles que pueden iniciar tuneo
-ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1415954460202766386]  # IDs de staff / propietario
+ROLES_TUNEO = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1391019755267424347, 1385301435456950391, 1385301435456950390, 1415954460202766386]
+ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1415954460202766386]
 
 # ------------------------------
 # Datos del bot
@@ -44,6 +45,9 @@ ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499
 turnos_activos = {}      # user_id -> {"dinero": total_acumulado_en_turno}
 tuneos_activos = {}      # user_id -> {"dinero": dinero_actual_del_tuneo}
 historial_tuneos = {}    # user_id -> {"dinero_total": total_acumulado, "tuneos": total_tuneos_completos}
+
+# Canal de identificación de mecánicos
+CANAL_IDENTIFICACION = 1398583186610716682
 
 # ------------------------------
 # Función de inicialización de mensajes fijos
@@ -53,13 +57,12 @@ async def on_ready():
     print(f"Bot conectado como {bot.user}")
 
     # IDs de canales
-    canal_turnos = bot.get_channel(1415949790545711236)  # Cambia por tu ID
-    canal_tuneos = bot.get_channel(1415963375485321226)  # Cambia por tu ID
-    canal_staff = bot.get_channel(1415964136550043689)   # Cambia por tu ID
-
+    canal_turnos = bot.get_channel(1415949790545711236)
+    canal_tuneos = bot.get_channel(1415963375485321226)
+    canal_staff = bot.get_channel(1415964136550043689)
 
     # --------------------------
-    # Mensaje Turnos - Iniciar Turno
+    # Mensaje Turnos - Iniciar / Finalizar
     # --------------------------
     view_turno = View()
     button_turno = Button(label="⏱️ Iniciar Turno", style=discord.ButtonStyle.green)
@@ -67,7 +70,6 @@ async def on_ready():
     async def iniciar_callback(interaction: discord.Interaction):
         uid = interaction.user.id
         await interaction.response.defer(ephemeral=True)
-
         if not any(role.id in ROLES_TUNEO for role in interaction.user.roles):
             await interaction.followup.send("❌ No tienes permiso para iniciar un turno.", ephemeral=True)
             return
@@ -80,7 +82,6 @@ async def on_ready():
     button_turno.callback = iniciar_callback
     view_turno.add_item(button_turno)
 
-    # Botón finalizar turno
     button_finalizar_turno = Button(label="✅ Finalizar Turno", style=discord.ButtonStyle.red)
 
     async def finalizar_turno_callback(interaction: discord.Interaction):
@@ -90,7 +91,6 @@ async def on_ready():
             await interaction.followup.send("❌ No tienes un turno activo.", ephemeral=True)
             return
 
-        # Finalizar tuneo en curso si existe
         if uid in tuneos_activos:
             dinero_tuneo = tuneos_activos.pop(uid)["dinero"]
             turnos_activos[uid]["dinero"] += dinero_tuneo
@@ -112,7 +112,7 @@ async def on_ready():
     await canal_turnos.send("Pulsa los botones para gestionar tu turno:", view=view_turno)
 
     # --------------------------
-    # Mensaje Tuneos - Botones de tuneo + finalizar tuneo
+    # Mensaje Tuneos
     # --------------------------
     view_tuneos = View()
     for tuneo, precio in precios_tuneos.items():
@@ -133,7 +133,6 @@ async def on_ready():
         button.callback = tuneo_callback
         view_tuneos.add_item(button)
 
-    # Botón finalizar tuneo
     button_finalizar_tuneo = Button(label="✅ Finalizar Tuneo", style=discord.ButtonStyle.green)
 
     async def finalizar_tuneo_callback(interaction: discord.Interaction):
@@ -159,7 +158,7 @@ async def on_ready():
     await canal_tuneos.send("Pulsa los botones para registrar tus tuneos y finalizar cada tuneo:", view=view_tuneos)
 
     # --------------------------
-    # Mensaje Staff - Historial total
+    # Mensaje Staff - Historial
     # --------------------------
     view_historial = View()
     button_historial = Button(label="📋 Historial Total", style=discord.ButtonStyle.gray)
@@ -183,5 +182,41 @@ async def on_ready():
     button_historial.callback = historial_callback
     view_historial.add_item(button_historial)
     await canal_staff.send("Pulsa el botón para ver el historial completo de tuneos:", view=view_historial)
+
+# ------------------------------
+# Identificación de mecánicos
+# ------------------------------
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if message.channel.id == CANAL_IDENTIFICACION:
+        match = re.match(r"ID IC:\s*(\d+)\s+NOMBRE IC:\s*(.+)", message.content, re.IGNORECASE)
+        if match:
+            user_id_ic = match.group(1)
+            nombre_ic = match.group(2)
+            try:
+                nuevo_apodo = f"🧰 APR | {nombre_ic} | {user_id_ic}"
+                await message.author.edit(nick=nuevo_apodo)
+                await message.add_reaction("✅")
+            except discord.Forbidden:
+                await message.add_reaction("⚠️")
+        else:
+            await message.add_reaction("❌")
+            try:
+                await message.author.send(
+                    "⚠️ Tu identificación no sigue el formato correcto.\n\n"
+                    "Usa este formato:\n"
+                    "`ID IC: 16607 NOMBRE IC: Juan Corte`\n\n"
+                    "🔧 Una vez lo corrijas, el bot actualizará tu apodo automáticamente."
+                )
+            except discord.Forbidden:
+                await message.channel.send(
+                    f"{message.author.mention} ⚠️ No pude enviarte un mensaje privado, "
+                    "activa los MD para recibir instrucciones."
+                )
+
+    await bot.process_commands(message)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
