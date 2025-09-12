@@ -34,51 +34,46 @@ ROLES_TUNEO = [1385301435499151429, 1385301435499151427, 1385301435499151426, 13
 ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1415954460202766386]  # IDs de staff / propietario
 
 
-# Turnos activos
-turnos_tuneo = {}  # user_id -> {tipo: cantidad}
+# Turnos activos: user_id -> {"dinero": total_dinero_en_turno}
+turnos_tuneo = {}
 
-# Historial completo: user_id -> {"dinero": total_dinero, "tuneos": cantidad_total}
+# Historial completo: user_id -> {"dinero": total_dinero_acumulado, "tuneos": total_tuneos_completos}
 historial_tuneos = {}
 
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
 
-# Iniciar turno de tuneo
+# Iniciar turno
 @bot.command()
 async def iniciar_tuneo(ctx):
     if not any(role.id in ROLES_TUNEO for role in ctx.author.roles):
         await ctx.send("❌ No tienes permiso para iniciar un tuneo.", ephemeral=True)
         return
 
-    user_id = ctx.author.id
-    if user_id in turnos_tuneo:
+    uid = ctx.author.id
+    if uid in turnos_tuneo:
         await ctx.send(f"❌ {ctx.author.mention}, ya tienes un turno activo.", ephemeral=True)
         return
 
-    turnos_tuneo[user_id] = {}
+    turnos_tuneo[uid] = {"dinero": 0}
     view = View()
 
-    # Botones para cada tuneo
+    # Botones para cada parte del tuneo
     for tuneo, precio in precios_tuneos.items():
         button = Button(label=f"{tuneo} (${precio:,})", style=discord.ButtonStyle.blurple)
 
         async def tuneo_callback(interaction: discord.Interaction, t=tuneo, p=precio):
-            uid = interaction.user.id
-            if uid not in turnos_tuneo:
+            uid2 = interaction.user.id
+            if uid2 not in turnos_tuneo:
                 await interaction.response.send_message("❌ No tienes un turno activo.", ephemeral=True)
                 return
 
-            turno_actual = turnos_tuneo[uid]
-            if t not in turno_actual:
-                turno_actual[t] = 0
-            turno_actual[t] += 1
-
-            total_dinero = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in turno_actual.items())
-            total_tuneos = sum(turno_actual.values())
+            turnos_tuneo[uid2]["dinero"] += p
+            total_dinero = turnos_tuneo[uid2]["dinero"]
 
             await interaction.response.send_message(
-                f"🔧 Añadido {t} a tu turno.\n💰 Total acumulado: ${total_dinero:,}\n🎯 Tuneos totales: {total_tuneos}",
+                f"🔧 Añadido {t} a tu turno.\n💰 Total acumulado: ${total_dinero:,}",
                 ephemeral=True
             )
 
@@ -89,23 +84,22 @@ async def iniciar_tuneo(ctx):
     finalizar = Button(label="✅ Finalizar tuneo", style=discord.ButtonStyle.green)
 
     async def finalizar_callback(interaction: discord.Interaction):
-        uid = interaction.user.id
-        if uid not in turnos_tuneo:
+        uid2 = interaction.user.id
+        if uid2 not in turnos_tuneo:
             await interaction.response.send_message("❌ No tienes un turno activo.", ephemeral=True)
             return
 
-        turno_actual = turnos_tuneo.pop(uid)
-        total_dinero = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in turno_actual.items())
-        total_tuneos = sum(turno_actual.values())
+        total_dinero = turnos_tuneo[uid2].pop("dinero")
+        turnos_tuneo.pop(uid2)
 
-        if uid not in historial_tuneos:
-            historial_tuneos[uid] = {"dinero": 0, "tuneos": 0}
+        if uid2 not in historial_tuneos:
+            historial_tuneos[uid2] = {"dinero": 0, "tuneos": 0}
 
-        historial_tuneos[uid]["dinero"] += total_dinero
-        historial_tuneos[uid]["tuneos"] += total_tuneos
+        historial_tuneos[uid2]["dinero"] += total_dinero
+        historial_tuneos[uid2]["tuneos"] += 1  # Un solo tuneo completo
 
         await interaction.response.send_message(
-            f"✅ Turno finalizado.\n💰 Total de dinero de este turno: ${total_dinero:,}\n🎯 Total de tuneos: {total_tuneos}",
+            f"✅ Turno finalizado.\n💰 Total de dinero de este turno: ${total_dinero:,}\n🎯 Tuneo completo registrado: 1",
             ephemeral=True
         )
 
@@ -114,14 +108,14 @@ async def iniciar_tuneo(ctx):
 
     await ctx.send(f"{ctx.author.mention}, tu turno de tuneo ha comenzado. Pulsa los botones:", view=view)
 
-# Historial personal (muestra dinero acumulado)
+# Historial personal (dinero acumulado)
 @bot.command()
 async def mis_tuneos(ctx):
     uid = ctx.author.id
     total_dinero = historial_tuneos.get(uid, {}).get("dinero", 0)
     await ctx.send(f"💰 Has acumulado un total de ${total_dinero:,} en tuneos.", ephemeral=True)
 
-# Historial total (solo roles permitidos, muestra cantidad de tuneos)
+# Historial total (solo roles permitidos, muestra tuneos completos)
 @bot.command()
 async def historial_total(ctx):
     if not any(role.id in ROLES_HISTORIAL_TOTAL for role in ctx.author.roles):
