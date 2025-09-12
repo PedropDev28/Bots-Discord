@@ -208,7 +208,7 @@ async def on_message(message):
                 await message.author.send(
                     "⚠️ Tu identificación no sigue el formato correcto.\n\n"
                     "Usa este formato:\n"
-                    "`ID IC: 16607 NOMBRE IC: Juan Corte`\n\n"
+                    "`ID IC: 99999 NOMBRE IC: John Doe`\n\n"
                     "🔧 Una vez lo corrijas, el bot actualizará tu apodo automáticamente."
                 )
             except discord.Forbidden:
