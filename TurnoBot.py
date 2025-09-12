@@ -62,6 +62,11 @@ CANAL_RANKING = 1416021337519947858
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
 
+    # --------------------------
+    # Mantener el bot activo
+    # --------------------------
+    keep_alive.start()
+
     canal_turnos = bot.get_channel(1415949790545711236)
     canal_tuneos = bot.get_channel(1415963375485321226)
     canal_staff = bot.get_channel(CANAL_STAFF)
@@ -324,11 +329,5 @@ async def keep_alive():
             await canal.send("💤 Ping para mantener activo el bot.", delete_after=2)
         except Exception as e:
             print(f"No se pudo enviar el ping de keep_alive: {e}")
-
-# Inicia el loop cuando el bot esté listo
-@bot.event
-async def on_ready():
-    print(f"Bot conectado como {bot.user}")
-    keep_alive.start()  # Inicia el loop
 
 bot.run(os.getenv("DISCORD_TOKEN"))
