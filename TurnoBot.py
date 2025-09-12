@@ -47,4 +47,4 @@ async def turno(ctx):
     view.add_item(button)
     await ctx.send("Pulsa el botón para iniciar/finalizar tu turno:", view=view)
 
-bot.run("DISCORD_TOKEN")
+bot.run(os.getenv("DISCORD_TOKEN"))
