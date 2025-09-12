@@ -5,7 +5,6 @@ from datetime import datetime
 import pytz
 import os
 
-# 🔹 Configurar intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
@@ -33,18 +32,18 @@ precios_tuneos = {
 # Roles permitidos por ID
 ROLES_TUNEO = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1391019755267424347, 1385301435456950391, 1385301435456950390, 1415954460202766386 ]  # IDs de roles que pueden iniciar tuneo
 ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1415954460202766386]  # IDs de staff / propietario
+  
 
 # Turnos activos
-turnos_tuneo = {}
+turnos_tuneo = {}  # user_id -> cantidad de tuneos en el turno
 
-# Historial completo: user_id -> {tuneo: cantidad}
+# Historial completo: user_id -> total de tuneos acumulados
 historial_tuneos = {}
 
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
 
-# Comando para iniciar turno de tuneo (solo roles permitidos)
 @bot.command()
 async def iniciar_tuneo(ctx):
     if not any(role.id in ROLES_TUNEO for role in ctx.author.roles):
@@ -56,27 +55,24 @@ async def iniciar_tuneo(ctx):
         await ctx.send(f"❌ {ctx.author.mention}, ya tienes un turno activo.", ephemeral=True)
         return
 
-    turnos_tuneo[user_id] = {}
+    turnos_tuneo[user_id] = 0
     view = View()
 
     # Botones para cada tuneo
-    for tuneo, precio in precios_tuneos.items():
-        button = Button(label=f"{tuneo} (${precio:,})", style=discord.ButtonStyle.blurple)
+    for tuneo in precios_tuneos.keys():
+        button = Button(label=f"{tuneo}", style=discord.ButtonStyle.blurple)
 
-        async def tuneo_callback(interaction: discord.Interaction, t=tuneo, p=precio):
+        async def tuneo_callback(interaction: discord.Interaction, t=tuneo):
             uid = interaction.user.id
             if uid not in turnos_tuneo:
                 await interaction.response.send_message("❌ No tienes un turno activo.", ephemeral=True)
                 return
 
-            turno_actual = turnos_tuneo[uid]
-            if t not in turno_actual:
-                turno_actual[t] = 0
-            turno_actual[t] += 1
+            turnos_tuneo[uid] += 1  # Suma 1 al total de tuneos del turno
+            total_turno = turnos_tuneo[uid]
 
-            total_turno = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in turno_actual.items())
             await interaction.response.send_message(
-                f"🔧 Añadido {t} a tu turno.\n💰 Total acumulado: ${total_turno:,}",
+                f"🔧 Añadido {t} a tu turno.\n🎯 Total de tuneos en este turno: {total_turno}",
                 ephemeral=True
             )
 
@@ -92,17 +88,13 @@ async def iniciar_tuneo(ctx):
             await interaction.response.send_message("❌ No tienes un turno activo.", ephemeral=True)
             return
 
-        turno_actual = turnos_tuneo.pop(uid)
+        total_turno = turnos_tuneo.pop(uid)
         if uid not in historial_tuneos:
-            historial_tuneos[uid] = {}
-        for t, cantidad in turno_actual.items():
-            if t not in historial_tuneos[uid]:
-                historial_tuneos[uid][t] = 0
-            historial_tuneos[uid][t] += cantidad
+            historial_tuneos[uid] = 0
+        historial_tuneos[uid] += total_turno
 
-        total_final = sum(cantidad * precios_tuneos[nombre] for nombre, cantidad in turno_actual.items())
         await interaction.response.send_message(
-            f"✅ Turno finalizado.\n💰 Total de este turno: ${total_final:,}",
+            f"✅ Turno finalizado.\n🎯 Total de tuneos en este turno: {total_turno}",
             ephemeral=True
         )
 
@@ -114,19 +106,9 @@ async def iniciar_tuneo(ctx):
 # Historial personal
 @bot.command()
 async def mis_tuneos(ctx):
-    user_id = ctx.author.id
-    if user_id not in historial_tuneos or not historial_tuneos[user_id]:
-        await ctx.send(f"❌ No tienes tuneos realizados.", ephemeral=True)
-        return
-
-    msg = "🔧 Tus tuneos:\n"
-    total = 0
-    for t, cantidad in historial_tuneos[user_id].items():
-        subtotal = cantidad * precios_tuneos[t]
-        total += subtotal
-        msg += f"- {t}: {cantidad} (${subtotal:,})\n"
-    msg += f"💰 Total acumulado: ${total:,}"
-    await ctx.send(msg, ephemeral=True)
+    uid = ctx.author.id
+    total = historial_tuneos.get(uid, 0)
+    await ctx.send(f"🎯 Has realizado un total de {total} tuneos.", ephemeral=True)
 
 # Historial total (solo roles permitidos)
 @bot.command()
@@ -140,14 +122,10 @@ async def historial_total(ctx):
         return
 
     msg = "📋 Historial completo de tuneos:\n"
-    for uid, tuneos in historial_tuneos.items():
+    for uid, total in historial_tuneos.items():
         user = ctx.guild.get_member(uid)
         nombre = user.display_name if user else f"ID:{uid}"
-        total_usuario = sum(cantidad * precios_tuneos[t] for t, cantidad in tuneos.items())
-        msg += f"\n🔹 {nombre} (Total: ${total_usuario:,})\n"
-        for t, cantidad in tuneos.items():
-            subtotal = cantidad * precios_tuneos[t]
-            msg += f"   - {t}: {cantidad} (${subtotal:,})\n"
+        msg += f"- {nombre}: {total} tuneos\n"
 
     await ctx.send(msg, ephemeral=True)
 
