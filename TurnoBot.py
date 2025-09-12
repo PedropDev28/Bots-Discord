@@ -30,6 +30,10 @@ precios_tuneos = {
     "Kit de reparación": 50000
 }
 
+# Roles permitidos por ID
+ROLES_TUNEO = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1391019755267424347, 1385301435456950391, 1385301435456950390, 1415954460202766386 ]  # IDs de roles que pueden iniciar tuneo
+ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425, 1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423, 1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882, 1415954460202766386]  # IDs de staff / propietario
+
 # Turnos activos
 turnos_tuneo = {}
 
@@ -40,10 +44,13 @@ historial_tuneos = {}
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
 
-# Comando para iniciar turno de tuneo (solo mecánicos)
+# Comando para iniciar turno de tuneo (solo roles permitidos)
 @bot.command()
-@commands.has_role("Mecánico")
 async def iniciar_tuneo(ctx):
+    if not any(role.id in ROLES_TUNEO for role in ctx.author.roles):
+        await ctx.send("❌ No tienes permiso para iniciar un tuneo.", ephemeral=True)
+        return
+
     user_id = ctx.author.id
     if user_id in turnos_tuneo:
         await ctx.send(f"❌ {ctx.author.mention}, ya tienes un turno activo.", ephemeral=True)
@@ -121,10 +128,13 @@ async def mis_tuneos(ctx):
     msg += f"💰 Total acumulado: ${total:,}"
     await ctx.send(msg, ephemeral=True)
 
-# Historial total (solo administradores o rol específico)
+# Historial total (solo roles permitidos)
 @bot.command()
-@commands.has_role("Jefe Taller")
 async def historial_total(ctx):
+    if not any(role.id in ROLES_HISTORIAL_TOTAL for role in ctx.author.roles):
+        await ctx.send("❌ No tienes permiso para ver el historial completo.", ephemeral=True)
+        return
+
     if not historial_tuneos:
         await ctx.send("❌ No hay tuneos registrados aún.", ephemeral=True)
         return
