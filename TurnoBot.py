@@ -312,4 +312,23 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
+# --------------------------
+# Mantener el bot activo en Railway
+# --------------------------
+@tasks.loop(minutes=10)
+async def keep_alive():
+    canal_id = 1387055864866799637
+    canal = bot.get_channel(canal_id)
+    if canal:
+        try:
+            await canal.send("💤 Ping para mantener activo el bot.", delete_after=2)
+        except Exception as e:
+            print(f"No se pudo enviar el ping de keep_alive: {e}")
+
+# Inicia el loop cuando el bot esté listo
+@bot.event
+async def on_ready():
+    print(f"Bot conectado como {bot.user}")
+    keep_alive.start()  # Inicia el loop
+
 bot.run(os.getenv("DISCORD_TOKEN"))
