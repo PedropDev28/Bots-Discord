@@ -53,6 +53,18 @@ ROLES_HISTORIAL_TOTAL = [
 ROL_PROPIETARIO = 1410548111788740620  # Solo este rol ve el thread privado
 ROL_MIEMBRO = 1387524774485299391      # Para autoavisos
 
+# Diccionario de roles especiales y sus prefijos de apodo (ACTUALIZA LOS IDs QUE FALTEN)
+ROLES_APODOS = {
+    1385301435499151429: ("🔧 MEC", "MEC"),          # Mecánico
+    1410548111788740620: ("⭐ GER", "GER"),           # Gerente
+    123456789012345678: ("⭐ JEF", "JEF"),            # Jefe mecánico
+    234567890123456789: ("⭐ SUBGER", "SUBGER"),      # Subgerente
+    345678901234567890: ("⭐ SUBJEF", "SUBJEF"),      # Subjefe
+    456789012345678901: ("👑 GER. GEN.", "GER. GEN."),# Gerente general
+    567890123456789012: ("📋 REC", "REC"),           # Reclutador
+    1385301435456950390: ("🧰 APR", "APR"),          # Aprendiz
+}
+
 # ------------------------------
 # Datos del bot
 # ------------------------------
@@ -88,7 +100,6 @@ estados = itertools.cycle([
 
 @tasks.loop(minutes=10)
 async def rotar_estado():
-    # Cuenta de mecánicos activos: miembros con algún rol en ROLES_TUNEO
     mec_activos = 0
     for guild in bot.guilds:
         for miembro in guild.members:
@@ -117,26 +128,21 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
         if rol1: await interaction.user.add_roles(rol1)
         if rol2: await interaction.user.add_roles(rol2)
 
-        # Buscar o crear un thread privado para identificaciones
         canal = interaction.guild.get_channel(CANAL_IDENTIFICACION)
         thread_name = "Identificaciones Mecánicos"
         thread = None
-        # Ver si ya existe el thread privado
         async for th in canal.threads:
             if th.name == thread_name:
                 thread = th
                 break
         if thread is None:
-            # Crear thread privado solo para el propietario
             thread = await canal.create_thread(
                 name=thread_name,
                 type=discord.ChannelType.private_thread,
                 invitable=False
             )
             await thread.edit(invitable=False)
-            # Añadir permisos: solo el propietario y el bot pueden ver el thread
             await thread.add_user(interaction.guild.get_member(ROL_PROPIETARIO))
-        # Publica el mensaje con el apodo en el thread privado
         msg = await thread.send(f"{interaction.user.mention} identificado como: **{nuevo_apodo}**")
         await msg.add_reaction("✅")
 
@@ -145,21 +151,13 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
             ephemeral=True
         )
 
-# ------------------------------
-# Evento para limpiar mensajes en canal identificación (opcional)
-# ------------------------------
 @bot.event
 async def on_message(message):
-    # Borra solo mensajes de usuarios, nunca de bots (para que el botón permanezca)
     if message.channel.id == CANAL_IDENTIFICACION and not message.author.bot:
         await message.delete()
     await bot.process_commands(message)
 
-# ------------------------------
-# Tarea: avisar a los miembros para que se identifiquen
-# ------------------------------
-avisados_identificacion = set()  # user_id a los que ya se avisó
-
+avisados_identificacion = set()
 @tasks.loop(hours=1)
 async def avisar_miembros_identificacion():
     for guild in bot.guilds:
@@ -180,9 +178,6 @@ async def avisar_miembros_identificacion():
             except Exception:
                 pass
 
-# ------------------------------
-# Inicialización y mensajes fijos (botón de identificación)
-# ------------------------------
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
@@ -210,12 +205,8 @@ async def on_ready():
     canal_tuneos = bot.get_channel(1415963375485321226)
     canal_staff = bot.get_channel(CANAL_STAFF)
 
-    # --------------------------
-    # Mensaje Turnos
-    # --------------------------
     view_turno = View(timeout=None)
     button_turno = Button(label="⏱️ Iniciar Turno", style=discord.ButtonStyle.green)
-
     async def iniciar_callback(interaction: discord.Interaction):
         uid = interaction.user.id
         await interaction.response.defer(ephemeral=True)
@@ -225,18 +216,15 @@ async def on_ready():
             return await interaction.followup.send("❌ Ya tienes un turno activo.", ephemeral=True)
         turnos_activos[uid] = {"dinero": 0, "inicio": datetime.now(zona)}
         await interaction.followup.send("✅ Tu turno ha comenzado.", ephemeral=True)
-
     button_turno.callback = iniciar_callback
     view_turno.add_item(button_turno)
 
     button_finalizar_turno = Button(label="✅ Finalizar Turno", style=discord.ButtonStyle.red)
-
     async def finalizar_turno_callback(interaction: discord.Interaction):
         uid = interaction.user.id
         await interaction.response.defer(ephemeral=True)
         if uid not in turnos_activos:
             return await interaction.followup.send("❌ No tienes un turno activo.", ephemeral=True)
-
         if uid in tuneos_activos:
             dinero_tuneo = tuneos_activos.pop(uid)["dinero"]
             turnos_activos[uid]["dinero"] += dinero_tuneo
@@ -247,32 +235,24 @@ async def on_ready():
             historial_tuneos[uid]["detalle"].append(
                 (datetime.now(zona), dinero_tuneo, "Finalizado auto al cerrar turno")
             )
-
         datos_turno = turnos_activos.pop(uid)
         total_dinero = datos_turno["dinero"]
         inicio = datos_turno["inicio"]
         duracion = datetime.now(zona) - inicio
-
         if uid not in historial_tuneos:
             historial_tuneos[uid] = {"dinero_total": 0, "tuneos": 0, "detalle": []}
         historial_tuneos[uid]["dinero_total"] += total_dinero
-
         await interaction.followup.send(
             f"✅ Turno finalizado. Total dinero acumulado: ${total_dinero:,}\n⏱️ Duración: {duracion}",
             ephemeral=True
         )
-
     button_finalizar_turno.callback = finalizar_turno_callback
     view_turno.add_item(button_finalizar_turno)
     await canal_turnos.send("Pulsa los botones para gestionar tu turno:", view=view_turno)
 
-    # --------------------------
-    # Mensaje Tuneos
-    # --------------------------
     view_tuneos = View(timeout=None)
     for tuneo, precio in precios_tuneos.items():
         button = Button(label=f"{tuneo} (${precio:,})", style=discord.ButtonStyle.blurple)
-
         async def tuneo_callback(interaction: discord.Interaction, t=tuneo, p=precio):
             uid = interaction.user.id
             await interaction.response.defer(ephemeral=True)
@@ -283,21 +263,16 @@ async def on_ready():
             tuneos_activos[uid]["dinero"] += p
             total = tuneos_activos[uid]["dinero"]
             await interaction.followup.send(f"🔧 Añadido {t}. Total tuneo: ${total:,}", ephemeral=True)
-
         button.callback = tuneo_callback
         view_tuneos.add_item(button)
-
     button_finalizar_tuneo = Button(label="✅ Finalizar Tuneo", style=discord.ButtonStyle.green)
-
     async def finalizar_tuneo_callback(interaction: discord.Interaction):
         uid = interaction.user.id
         await interaction.response.defer(ephemeral=True)
         if uid not in tuneos_activos:
             return await interaction.followup.send("❌ No tienes tuneos activos.", ephemeral=True)
-
         dinero_tuneo = tuneos_activos.pop(uid)["dinero"]
         turnos_activos[uid]["dinero"] += dinero_tuneo
-
         if uid not in historial_tuneos:
             historial_tuneos[uid] = {"dinero_total": 0, "tuneos": 0, "detalle": []}
         historial_tuneos[uid]["dinero_total"] += dinero_tuneo
@@ -305,27 +280,20 @@ async def on_ready():
         historial_tuneos[uid]["detalle"].append(
             (datetime.now(zona), dinero_tuneo, "Tuneo completado")
         )
-
         if historial_tuneos[uid]["tuneos"] in [50, 100, 200]:
             await canal_staff.send(
                 f"🎉 ¡Felicidades {interaction.user.mention}! Has alcanzado {historial_tuneos[uid]['tuneos']} tuneos, premio disponible 🎁."
             )
-
         await interaction.followup.send(
             f"✅ Tuneo finalizado. Dinero: ${dinero_tuneo:,} registrado como 1 tuneo.",
             ephemeral=True
         )
-
     button_finalizar_tuneo.callback = finalizar_tuneo_callback
     view_tuneos.add_item(button_finalizar_tuneo)
     await canal_tuneos.send("Pulsa los botones para registrar tus tuneos y finalizar cada tuneo:", view=view_tuneos)
 
-    # --------------------------
-    # Mensaje Staff - Historial total con botón
-    # --------------------------
     view_historial = View(timeout=None)
     button_historial = Button(label="📋 Historial Total", style=discord.ButtonStyle.gray)
-
     async def historial_callback(interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         if not any(role.id in ROLES_HISTORIAL_TOTAL for role in interaction.user.roles):
@@ -341,25 +309,16 @@ async def on_ready():
             total_tuneos = datos.get("tuneos", 0)
             msg += f"- {nombre}: {total_tuneos} tuneos\n"
         await interaction.followup.send(msg, ephemeral=True)
-
     button_historial.callback = historial_callback
     view_historial.add_item(button_historial)
     await canal_staff.send("Pulsa el botón para ver el historial completo de tuneos:", view=view_historial)
 
-    # --------------------------
-    # Ranking automático
-    # --------------------------
     ranking_task.start()
 
-# ------------------------------
-# Ranking semanal y mensual
-# ------------------------------
 @tasks.loop(hours=24)
 async def ranking_task():
     ahora = datetime.now(zona)
     canal = bot.get_channel(CANAL_RANKING)
-
-    # Ranking semanal
     if ahora.weekday() == 6:  # Domingo
         ranking = sorted(historial_tuneos.items(), key=lambda x: x[1]["tuneos"], reverse=True)[:5]
         if ranking:
@@ -369,8 +328,6 @@ async def ranking_task():
                 nombre = user.display_name if user else f"ID:{uid}"
                 msg += f"{i}️⃣ {nombre} - {datos['tuneos']} tuneos\n"
             await canal.send(msg)
-
-    # Ranking mensual (último día del mes)
     mañana = ahora + timedelta(days=1)
     if mañana.month != ahora.month:
         ranking = sorted(historial_tuneos.items(), key=lambda x: x[1]["tuneos"], reverse=True)[:5]
@@ -382,9 +339,6 @@ async def ranking_task():
                 msg += f"{i}️⃣ {nombre} - {datos['tuneos']} tuneos\n"
             await canal.send(msg)
 
-# --------------------------
-# Comando staff: historial detallado
-# --------------------------
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
 async def historial(ctx, member: discord.Member):
@@ -398,18 +352,12 @@ async def historial(ctx, member: discord.Member):
     msg += f"\n🔧 Total: {datos['tuneos']} tuneos | 💰 ${datos['dinero_total']:,}"
     await ctx.send(msg)
 
-# --------------------------
-# Comando staff: limpiar mensajes
-# --------------------------
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
 async def borrar(ctx, cantidad: int):
     await ctx.channel.purge(limit=cantidad + 1)
     await ctx.send(f"🧹 Se borraron {cantidad} mensajes.", delete_after=5)
 
-# --------------------------
-# Mantener el bot activo en Railway
-# --------------------------
 @tasks.loop(minutes=10)
 async def keep_alive():
     canal = bot.get_channel(CANAL_KEEPALIVE)
@@ -419,7 +367,41 @@ async def keep_alive():
         except Exception as e:
             print(f"No se pudo enviar el ping de keep_alive: {e}")
 
-# ------------------------------
-# Ejecutar bot
-# ------------------------------
+# --------------------------
+# COMANDO CAMBIAR ROL Y APODO CON FORMATO PERSONALIZADO
+# --------------------------
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def cambiarrol(ctx, miembro: discord.Member, id_rol: int):
+    """Cambia el rol y apodo de un usuario según el id del rol y el formato especial."""
+    rol_obj = ctx.guild.get_role(id_rol)
+    if not rol_obj:
+        await ctx.send("❌ Ese rol no existe en este servidor.")
+        return
+
+    prefijo = ROLES_APODOS.get(id_rol)
+    if not prefijo:
+        await ctx.send("❌ Ese rol no tiene prefijo configurado. Edita el diccionario ROLES_APODOS.")
+        return
+
+    roles_a_quitar = [ctx.guild.get_role(rid) for rid in ROLES_APODOS.keys() if rid != id_rol]
+    await miembro.remove_roles(*[r for r in roles_a_quitar if r in miembro.roles])
+
+    if rol_obj not in miembro.roles:
+        await miembro.add_roles(rol_obj)
+
+    apodo = miembro.display_name
+    partes = apodo.split('|')
+    if len(partes) == 3:
+        nombre = partes[1].strip()
+        idic = partes[2].strip()
+        nuevo_apodo = f"{prefijo[0]} | {nombre} | {idic}"
+        try:
+            await miembro.edit(nick=nuevo_apodo)
+            await ctx.send(f"✅ {miembro.mention} ahora es `{nuevo_apodo}` y tiene el rol {rol_obj.mention}")
+        except discord.Forbidden:
+            await ctx.send("⚠️ No tengo permisos para cambiar el apodo de ese usuario.")
+    else:
+        await ctx.send("⚠️ El apodo de este usuario no tiene el formato esperado y no fue editado. Formato esperado: `[emoji] [ROL] | Nombre | ID`")
+
 bot.run(os.getenv("DISCORD_TOKEN"))
