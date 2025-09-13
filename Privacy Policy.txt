@@ -1,0 +1,85 @@
+🔒 POLÍTICA DE PRIVACIDAD
+Última actualización: 13/09/2025
+1. Información que Recopilamos
+Datos de Discord que procesamos:
+
+ID de usuario de Discord
+Nombre de usuario y apodo en el servidor
+Roles asignados en el servidor
+Mensajes enviados en canales específicos (solo para identificación)
+
+Datos de actividad que almacenamos:
+
+Horarios de inicio y fin de turnos
+Tipos y costos de tuneos realizados
+Historial de ganancias y estadísticas
+Fechas y horas de actividades registradas
+
+2. Cómo Usamos la Información
+Utilizamos los datos para:
+
+Gestionar turnos de trabajo y calcular ganancias
+Mantener estadísticas de rendimiento
+Generar rankings y reportes
+Identificar automáticamente a mecánicos
+Proporcionar historial de actividades
+
+3. Almacenamiento de Datos
+Ubicación: Los datos se almacenan en memoria del servidor donde opera el Bot.
+Duración:
+
+Los datos se mantienen mientras el Bot esté activo
+Al reiniciar el Bot, algunos datos temporales pueden perderse
+El historial se mantiene hasta que se elimine manualmente
+
+Seguridad:
+
+No se cifran los datos (se almacenan en memoria)
+Solo personal autorizado tiene acceso al código del Bot
+Los datos no se comparten con terceros
+
+4. Compartir Información
+NO compartimos tus datos con:
+
+Terceros externos
+Otras empresas o servicios
+Usuarios no autorizados
+
+Datos visibles para otros usuarios:
+
+Estadísticas de rendimiento en rankings públicos
+Historial de turnos para administradores autorizados
+Información mostrada en canales del servidor
+
+5. Control de Datos
+Tienes derecho a:
+
+Solicitar información sobre tus datos almacenados
+Pedir la eliminación de tu historial
+Dejar de usar el Bot en cualquier momento
+
+Para ejercer estos derechos: Contacta con los administradores del servidor.
+6. Datos de Menores
+
+No recopilamos intencionalmente datos de menores de 13 años
+Si eres menor de edad, necesitas permiso parental para usar Discord
+Los padres pueden solicitar eliminación de datos de menores
+
+7. Cookies y Tecnologías Similares
+El Bot no utiliza cookies, pero Discord puede usar sus propias tecnologías de seguimiento según su política de privacidad.
+8. Cambios en la Política
+Te notificaremos sobre cambios importantes en esta política a través de:
+
+Anuncios en el servidor de Discord
+Actualizaciones en este documento
+Mensajes directos si es necesario
+
+9. Cumplimiento Legal
+Podemos divulgar información si:
+
+Es requerido por ley
+Es necesario para proteger derechos o seguridad
+Se requiere para investigar violaciones de términos
+
+10. Transferencia Internacional
+Los datos pueden procesarse en servidores ubicados en diferentes países, sujetos a las leyes de privacidad aplicables.
