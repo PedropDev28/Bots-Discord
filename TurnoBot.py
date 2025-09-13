@@ -38,16 +38,20 @@ precios_tuneos = {
 # ------------------------------
 # Roles por ID
 # ------------------------------
-ROLES_TUNEO = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425,
-               1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423,
-               1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882,
-               1391019755267424347, 1385301435456950391, 1385301435456950390, 1415954460202766386]
-ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425,
-                         1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423,
-                         1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882,
-                         1415954460202766386]
-
-ROL_MIEMBRO = 1387524774485299391  # Rol Miembro
+ROLES_TUNEO = [
+    1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425,
+    1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423,
+    1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882,
+    1391019755267424347, 1385301435456950391, 1385301435456950390, 1415954460202766386
+]
+ROLES_HISTORIAL_TOTAL = [
+    1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425,
+    1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423,
+    1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882,
+    1415954460202766386
+]
+ROL_PROPIETARIO = 1410548111788740620  # Solo este rol ve el thread privado
+ROL_MIEMBRO = 1387524774485299391      # Para autoavisos
 
 # ------------------------------
 # Datos del bot
@@ -84,7 +88,12 @@ estados = itertools.cycle([
 
 @tasks.loop(minutes=10)
 async def rotar_estado():
-    mec_activos = len(turnos_activos)
+    # Cuenta de mecánicos activos: miembros con algún rol en ROLES_TUNEO
+    mec_activos = 0
+    for guild in bot.guilds:
+        for miembro in guild.members:
+            if any(role.id in ROLES_TUNEO for role in miembro.roles):
+                mec_activos += 1
     estado = next(estados)
     await bot.change_presence(activity=discord.Game(f"{estado.name if hasattr(estado, 'name') else estado.type} | Mecánicos activos: {mec_activos}"))
 
@@ -108,18 +117,28 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
         if rol1: await interaction.user.add_roles(rol1)
         if rol2: await interaction.user.add_roles(rol2)
 
-        # Mensaje en canal de identificación con apodo y reacción ✅️
+        # Buscar o crear un thread privado para identificaciones
         canal = interaction.guild.get_channel(CANAL_IDENTIFICACION)
-        msg = await canal.send(f"{interaction.user.mention} identificado como: **{nuevo_apodo}**")
+        thread_name = "Identificaciones Mecánicos"
+        thread = None
+        # Ver si ya existe el thread privado
+        async for th in canal.threads:
+            if th.name == thread_name:
+                thread = th
+                break
+        if thread is None:
+            # Crear thread privado solo para el propietario
+            thread = await canal.create_thread(
+                name=thread_name,
+                type=discord.ChannelType.private_thread,
+                invitable=False
+            )
+            await thread.edit(invitable=False)
+            # Añadir permisos: solo el propietario y el bot pueden ver el thread
+            await thread.add_user(interaction.guild.get_member(ROL_PROPIETARIO))
+        # Publica el mensaje con el apodo en el thread privado
+        msg = await thread.send(f"{interaction.user.mention} identificado como: **{nuevo_apodo}**")
         await msg.add_reaction("✅")
-        # Borra el mensaje tras 10 segundos
-        await msg.delete(delay=10)
-
-        # Borra el mensaje del botón que originó el modal (si es posible)
-        try:
-            await interaction.message.delete()
-        except Exception:
-            pass
 
         await interaction.response.send_message(
             f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}",
@@ -131,6 +150,7 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
 # ------------------------------
 @bot.event
 async def on_message(message):
+    # Borra solo mensajes de usuarios, nunca de bots (para que el botón permanezca)
     if message.channel.id == CANAL_IDENTIFICACION and not message.author.bot:
         await message.delete()
     await bot.process_commands(message)
@@ -147,13 +167,10 @@ async def avisar_miembros_identificacion():
         if rol_miembro is None:
             continue
         for miembro in rol_miembro.members:
-            # Si el usuario tiene algún rol de mecánico, no avisar
             if any(role.id in ROLES_TUNEO for role in miembro.roles):
                 continue
-            # Si ya fue avisado, no volver a avisar
             if miembro.id in avisados_identificacion:
                 continue
-            # Intentar mandar DM
             try:
                 await miembro.send(
                     f"¡Hola {miembro.display_name}! Para poder ejercer como mecánico, por favor identifícate en el canal <#{CANAL_IDENTIFICACION}> pulsando el botón y rellenando el formulario. "
@@ -161,10 +178,10 @@ async def avisar_miembros_identificacion():
                 )
                 avisados_identificacion.add(miembro.id)
             except Exception:
-                pass  # No se pudo enviar DM, probablemente cerrado
+                pass
 
 # ------------------------------
-# Inicialización y mensajes fijos, incluyendo el botón de identificación
+# Inicialización y mensajes fijos (botón de identificación)
 # ------------------------------
 @bot.event
 async def on_ready():
