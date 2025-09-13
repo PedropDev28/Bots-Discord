@@ -47,6 +47,8 @@ ROLES_HISTORIAL_TOTAL = [1385301435499151429, 1385301435499151427, 1385301435499
                          1385301435499151422, 1385301435456950394, 1391019848414400583, 1391019868630945882,
                          1415954460202766386]
 
+ROL_MIEMBRO = 1387524774485299391  # Rol Miembro
+
 # ------------------------------
 # Datos del bot
 # ------------------------------
@@ -106,33 +108,63 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
         if rol1: await interaction.user.add_roles(rol1)
         if rol2: await interaction.user.add_roles(rol2)
 
+        # Mensaje en canal de identificación con apodo y reacción ✅️
+        canal = interaction.guild.get_channel(CANAL_IDENTIFICACION)
+        msg = await canal.send(f"{interaction.user.mention} identificado como: **{nuevo_apodo}**")
+        await msg.add_reaction("✅")
+        # Borra el mensaje tras 10 segundos
+        await msg.delete(delay=10)
+
+        # Borra el mensaje del botón que originó el modal (si es posible)
+        try:
+            await interaction.message.delete()
+        except Exception:
+            pass
+
         await interaction.response.send_message(
             f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}",
             ephemeral=True
         )
 
 # ------------------------------
-# Evento para abrir modal en canal de identificación
+# Evento para limpiar mensajes en canal identificación (opcional)
 # ------------------------------
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return
-
-    if message.channel.id == CANAL_IDENTIFICACION:
-        await message.delete()  # opcional, limpia el canal
-        try:
-            await message.author.send_modal(IdentificacionModal())
-        except discord.Forbidden:
-            await message.channel.send(
-                f"{message.author.mention} ⚠️ No pude abrirte el formulario. "
-                "Asegúrate de tener los mensajes privados habilitados."
-            )
-
+    if message.channel.id == CANAL_IDENTIFICACION and not message.author.bot:
+        await message.delete()
     await bot.process_commands(message)
 
 # ------------------------------
-# Función de inicialización de mensajes fijos
+# Tarea: avisar a los miembros para que se identifiquen
+# ------------------------------
+avisados_identificacion = set()  # user_id a los que ya se avisó
+
+@tasks.loop(hours=1)
+async def avisar_miembros_identificacion():
+    for guild in bot.guilds:
+        rol_miembro = guild.get_role(ROL_MIEMBRO)
+        if rol_miembro is None:
+            continue
+        for miembro in rol_miembro.members:
+            # Si el usuario tiene algún rol de mecánico, no avisar
+            if any(role.id in ROLES_TUNEO for role in miembro.roles):
+                continue
+            # Si ya fue avisado, no volver a avisar
+            if miembro.id in avisados_identificacion:
+                continue
+            # Intentar mandar DM
+            try:
+                await miembro.send(
+                    f"¡Hola {miembro.display_name}! Para poder ejercer como mecánico, por favor identifícate en el canal <#{CANAL_IDENTIFICACION}> pulsando el botón y rellenando el formulario. "
+                    "Si ya lo hiciste, puedes ignorar este mensaje."
+                )
+                avisados_identificacion.add(miembro.id)
+            except Exception:
+                pass  # No se pudo enviar DM, probablemente cerrado
+
+# ------------------------------
+# Inicialización y mensajes fijos, incluyendo el botón de identificación
 # ------------------------------
 @bot.event
 async def on_ready():
@@ -140,6 +172,22 @@ async def on_ready():
 
     keep_alive.start()
     rotar_estado.start()
+    avisar_miembros_identificacion.start()
+
+    canal_identificacion = bot.get_channel(CANAL_IDENTIFICACION)
+    view_ident = View(timeout=None)
+    btn_ident = Button(label="📝 Identifícate como mecánico", style=discord.ButtonStyle.green)
+
+    async def ident_callback(interaction: discord.Interaction):
+        await interaction.response.send_modal(IdentificacionModal())
+
+    btn_ident.callback = ident_callback
+    view_ident.add_item(btn_ident)
+
+    await canal_identificacion.send(
+        "Haz click en el botón para identificarte y rellenar el formulario de mecánico:",
+        view=view_ident
+    )
 
     canal_turnos = bot.get_channel(1415949790545711236)
     canal_tuneos = bot.get_channel(1415963375485321226)
@@ -192,7 +240,6 @@ async def on_ready():
             historial_tuneos[uid] = {"dinero_total": 0, "tuneos": 0, "detalle": []}
         historial_tuneos[uid]["dinero_total"] += total_dinero
 
-        # Mensaje solo al usuario, nada en canal staff
         await interaction.followup.send(
             f"✅ Turno finalizado. Total dinero acumulado: ${total_dinero:,}\n⏱️ Duración: {duracion}",
             ephemeral=True
