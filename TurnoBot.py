@@ -55,13 +55,13 @@ ROL_MIEMBRO = 1387524774485299391      # Para autoavisos
 
 # Diccionario de roles especiales y sus prefijos de apodo (ACTUALIZA LOS IDs QUE FALTEN)
 ROLES_APODOS = {
-    1385301435499151429: ("🔧 MEC", "MEC"),          # Mecánico
-    1410548111788740620: ("⭐ GER", "GER"),           # Gerente
-    123456789012345678: ("⭐ JEF", "JEF"),            # Jefe mecánico
-    234567890123456789: ("⭐ SUBGER", "SUBGER"),      # Subgerente
-    345678901234567890: ("⭐ SUBJEF", "SUBJEF"),      # Subjefe
-    456789012345678901: ("👑 GER. GEN.", "GER. GEN."),# Gerente general
-    567890123456789012: ("📋 REC", "REC"),           # Reclutador
+    1385301435456950391: ("🔧 MEC", "MEC"),          # Mecánico
+    1391019848414400583: ("⭐ GER", "GER"),           # Gerente
+    1385301435499151423: ("⭐ JEF", "JEF"),            # Jefe mecánico
+    1391019868630945882: ("⭐ SUBGER", "SUBGER"),      # Subgerente
+    1385301435499151422: ("⭐ SUBJEF", "SUBJEF"),      # Subjefe
+    1385301435456950394: ("👑 GER. GEN.", "GER. GEN."),# Gerente general
+    1391019755267424347: ("📋 REC", "REC"),           # Reclutador
     1385301435456950390: ("🧰 APR", "APR"),          # Aprendiz
 }
 
