@@ -6,8 +6,18 @@ import pytz
 import os
 import itertools
 
+# ==============================
+# Overspeed RP - Bot reestructurado
+# - Mantiene exactamente las mismas funcionalidades que el script original
+# - Comentarios añadidos para explicar cada bloque
+# - Cambios pedidos:
+#   * El "historial completo" se enviará SOLO al canal de staff (configurable)
+#   * En el embed de anuncio se ha eliminado la sección del "comando especial"
+#   * Añadido comando `!anunciar` para crear anuncios embed desde el chat
+# ==============================
+
 # ------------------------------
-# Configuración inicial
+# Configuración general / constantes
 # ------------------------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -18,7 +28,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 zona = pytz.timezone("Europe/Madrid")
 
 # ------------------------------
-# Precios de los tuneos
+# Precios de los tuneos (sin cambios)
 # ------------------------------
 precios_tuneos = {
     "Frenos": 80000,
@@ -45,7 +55,7 @@ ROLES_TUNEO = [
     1391019755267424347, 1385301435456950391, 1385301435456950390, 1415954460202766386
 ]
 
-# Si quieres restringir comandos (historial/borrar) a ciertos roles, mantenlos aquí
+# Roles con permiso para ver historial / usar comandos administrativos
 ROLES_HISTORIAL_TOTAL = [
     1385301435499151429, 1385301435499151427, 1385301435499151426, 1385301435499151425,
     1387806963001331743, 1387050926476365965, 1410548111788740620, 1385301435499151423,
@@ -56,7 +66,7 @@ ROLES_HISTORIAL_TOTAL = [
 ROL_PROPIETARIO = 1410548111788740620  # Solo este rol puede usar !cambiarrol
 ROL_MIEMBRO = 1387524774485299391      # Para avisos DM
 
-# Diccionario de roles especiales y sus prefijos de apodo
+# Prefijos que se aplican al apodo según rol (sin cambios)
 ROLES_APODOS = {
     1385301435456950391: ("🔧 MEC", "MEC"),          # Mecánico
     1391019848414400583: ("⭐ GER", "GER"),           # Gerente
@@ -69,9 +79,16 @@ ROLES_APODOS = {
 }
 
 # ------------------------------
-# Canales (CAMBIAR_AQUI por tus IDs reales)
+# Canales (ACTUALIZA ESTOS VALORES si es necesario)
+# - CANAL_IDENTIFICACION: canal donde hay botón para identificarse
+# - CANAL_TURNOS: canal con botones de inicio/fin turno y historial
+# - CANAL_TUNEOS: canal con botones de tuneos
+# - CANAL_RANKING: canal donde se publican rankings
+# - CANAL_KEEPALIVE: canal para pings keep-alive
+# - CANAL_ANUNCIOS: canal por defecto donde enviar anuncios
+# - CANAL_STAFF: canal del staff donde enviar el historial completo (DEBE CONFIGURARSE)
 # ------------------------------
-CANAL_IDENTIFICACION = 1398583186610716682  # canal con botón de identificación
+CANAL_IDENTIFICACION = 1398583186610716682
 ROLE_APRENDIZ = 1385301435456950390
 ROLE_OVERSPEED = 1387571297705394250
 CANAL_TURNOS = 1415949790545711236
@@ -80,16 +97,21 @@ CANAL_RANKING = 1416021337519947858
 CANAL_KEEPALIVE = 1387055864866799637
 CANAL_ANUNCIOS = 1387551821224214839
 
+# <<< IMPORTANTE >>>
+# PON AQUÍ EL ID DEL CANAL DE STAFF (channel donde quieres que llegue el "historial completo")
+# Si lo dejas en None, el botón avisará que no está configurado.
+CANAL_STAFF = None  # ej: 123456789012345678
+
 # ------------------------------
-# Datos runtime
+# Estado runtime (estructuras de datos in-memory)
 # ------------------------------
 turnos_activos = {}      # user_id -> {"dinero": int, "inicio": datetime}
-tuneos_activos = {}      # user_id -> {"dinero": int}
+ tuneos_activos = {}      # user_id -> {"dinero": int}
 historial_tuneos = {}    # user_id -> {"dinero_total": int, "tuneos": int, "detalle": list}
 avisados_identificacion = set()
 
 # ------------------------------
-# Estados rotativos
+# Estados rotativos del bot (actividad mostrada)
 # ------------------------------
 estados = itertools.cycle([
     discord.Game("Gestionando turnos ⏱️"),
@@ -104,8 +126,30 @@ estados = itertools.cycle([
     discord.Activity(type=discord.ActivityType.watching, name="a los clientes esperar 😅")
 ])
 
+# ------------------------------
+# Helpers (funciones utilitarias)
+# ------------------------------
+
+def has_any_role_by_id(member: discord.Member, role_ids: list) -> bool:
+    """Comprueba si un miembro tiene alguno de los roles indicados (por id)."""
+    try:
+        return any(role.id in role_ids for role in member.roles)
+    except Exception:
+        return False
+
+
+def safe_get_channel(channel_id: int):
+    """Devuelve el canal si existe o None si no existe o si channel_id es None."""
+    if not channel_id:
+        return None
+    return bot.get_channel(channel_id)
+
+# ------------------------------
+# Tareas periódicas
+# ------------------------------
 @tasks.loop(minutes=10)
 async def rotar_estado():
+    """Rota la actividad del bot cada X minutos y cuenta mecánicos activos."""
     mec_activos = 0
     for guild in bot.guilds:
         for miembro in guild.members:
@@ -115,16 +159,81 @@ async def rotar_estado():
             except Exception:
                 continue
     estado = next(estados)
-    # El objeto puede ser Game o Activity; mostramos su nombre si existe
     nombre_estado = getattr(estado, "name", None) or getattr(estado, "type", "Mecánicos")
     try:
         await bot.change_presence(activity=discord.Game(f"{nombre_estado} | Mecánicos activos: {mec_activos}"))
     except Exception:
-        # fallback sencillo
         await bot.change_presence(activity=discord.Game(f"Mecánicos activos: {mec_activos}"))
 
+
+@tasks.loop(hours=1)
+async def avisar_miembros_identificacion():
+    """Envía un DM a miembros sin identificar para recordarles que deben usar el canal de identificación."""
+    for guild in bot.guilds:
+        rol_miembro = guild.get_role(ROL_MIEMBRO)
+        if rol_miembro is None:
+            continue
+        for miembro in rol_miembro.members:
+            if any(role.id in ROLES_TUNEO for role in miembro.roles):
+                continue
+            if miembro.id in avisados_identificacion:
+                continue
+            try:
+                await miembro.send(
+                    f"¡Hola {miembro.display_name}! Para poder ejercer como mecánico, por favor identifícate en el canal <#{CANAL_IDENTIFICACION}> pulsando el botón y rellenando el formulario. "
+                    "Si ya lo hiciste, puedes ignorar este mensaje."
+                )
+                avisados_identificacion.add(miembro.id)
+            except Exception:
+                # usuarios con DMs cerrados o errores se ignoran
+                pass
+
+
+@tasks.loop(minutes=10)
+async def keep_alive():
+    """Pequeño ping para mantener el bot activo en hosting que necesite actividad periódica."""
+    canal = safe_get_channel(CANAL_KEEPALIVE)
+    if canal:
+        try:
+            await canal.send("💤 Ping para mantener activo el bot.", delete_after=2)
+        except Exception:
+            pass
+
+
+@tasks.loop(hours=24)
+async def ranking_task():
+    """Publica ranking semanal (domingo) y ranking mensual (cuando cambia mes)."""
+    ahora = datetime.now(zona)
+    canal = safe_get_channel(CANAL_RANKING)
+    if canal is None:
+        return
+    try:
+        # Ranking semanal (domingo)
+        if ahora.weekday() == 6:  # Domingo
+            ranking = sorted(historial_tuneos.items(), key=lambda x: x[1]["tuneos"], reverse=True)[:5]
+            if ranking:
+                msg = "🏆 **Ranking semanal de mecánicos:**\n"
+                for i, (uid, datos) in enumerate(ranking, 1):
+                    user = canal.guild.get_member(uid)
+                    nombre = user.display_name if user else f"ID:{uid}"
+                    msg += f"{i}️⃣ {nombre} - {datos['tuneos']} tuneos\n"
+                await canal.send(msg)
+        # Ranking mensual: comprobar si mañana es mes distinto
+        manana = ahora + timedelta(days=1)
+        if manana.month != ahora.month:
+            ranking = sorted(historial_tuneos.items(), key=lambda x: x[1]["tuneos"], reverse=True)[:5]
+            if ranking:
+                msg = "🏆 **Ranking mensual de mecánicos:**\n"
+                for i, (uid, datos) in enumerate(ranking, 1):
+                    user = canal.guild.get_member(uid)
+                    nombre = user.display_name if user else f"ID:{uid}"
+                    msg += f"{i}️⃣ {nombre} - {datos['tuneos']} tuneos\n"
+                await canal.send(msg)
+    except Exception:
+        pass
+
 # ------------------------------
-# Modal de identificación
+# Modal de identificación (exactamente igual que antes, pero dentro de la estructura)
 # ------------------------------
 class IdentificacionModal(Modal, title="Identificación de mecánico"):
     nombre_ic = TextInput(label="Nombre IC", placeholder="Ej: John Doe", max_length=32)
@@ -151,7 +260,7 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
             except Exception:
                 pass
 
-        # Crear o buscar thread privado en CANAL_IDENTIFICACION para registrar la identificación
+        # Registrar física/privadamente la identificación dentro de un thread del canal de identificación
         canal = interaction.guild.get_channel(CANAL_IDENTIFICACION)
         thread_name = "Identificaciones Mecánicos"
         thread = None
@@ -172,7 +281,6 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
                     thread = None
             if thread:
                 try:
-                    # Añadimos un mensaje al thread con la identificación (no mencionamos staff)
                     msg = await thread.send(f"{interaction.user.mention} identificado como: **{nuevo_apodo}**")
                     await msg.add_reaction("✅")
                 except Exception:
@@ -184,7 +292,7 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
         )
 
 # ------------------------------
-# Borrar mensajes en canal de identificación si alguien escribe (solo botón -> no comandos)
+# Listener: borrar mensajes que escriban en el canal de identificación
 # ------------------------------
 @bot.event
 async def on_message(message):
@@ -199,78 +307,10 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # ------------------------------
-# Aviso por DM para los miembros que no se han identificado
-# ------------------------------
-@tasks.loop(hours=1)
-async def avisar_miembros_identificacion():
-    for guild in bot.guilds:
-        rol_miembro = guild.get_role(ROL_MIEMBRO)
-        if rol_miembro is None:
-            continue
-        for miembro in rol_miembro.members:
-            # Saltar si ya tiene rol de mecánico
-            if any(role.id in ROLES_TUNEO for role in miembro.roles):
-                continue
-            if miembro.id in avisados_identificacion:
-                continue
-            try:
-                await miembro.send(
-                    f"¡Hola {miembro.display_name}! Para poder ejercer como mecánico, por favor identifícate en el canal <#{CANAL_IDENTIFICACION}> pulsando el botón y rellenando el formulario. "
-                    "Si ya lo hiciste, puedes ignorar este mensaje."
-                )
-                avisados_identificacion.add(miembro.id)
-            except Exception:
-                # usuarios con DMs cerrados o errores se ignoran
-                pass
-
-# ------------------------------
-# Tareas recurrentes
-# ------------------------------
-@tasks.loop(minutes=10)
-async def keep_alive():
-    canal = bot.get_channel(CANAL_KEEPALIVE)
-    if canal:
-        try:
-            await canal.send("💤 Ping para mantener activo el bot.", delete_after=2)
-        except Exception:
-            pass
-
-@tasks.loop(hours=24)
-async def ranking_task():
-    ahora = datetime.now(zona)
-    canal = bot.get_channel(CANAL_RANKING)
-    if canal is None:
-        return
-    # Ranking semanal (domingo)
-    try:
-        if ahora.weekday() == 6:  # Domingo
-            ranking = sorted(historial_tuneos.items(), key=lambda x: x[1]["tuneos"], reverse=True)[:5]
-            if ranking:
-                msg = "🏆 **Ranking semanal de mecánicos:**\n"
-                for i, (uid, datos) in enumerate(ranking, 1):
-                    user = canal.guild.get_member(uid)
-                    nombre = user.display_name if user else f"ID:{uid}"
-                    msg += f"{i}️⃣ {nombre} - {datos['tuneos']} tuneos\n"
-                await canal.send(msg)
-        # Ranking mensual: comprobar si mañana es mes distinto
-        manana = ahora + timedelta(days=1)
-        if manana.month != ahora.month:
-            ranking = sorted(historial_tuneos.items(), key=lambda x: x[1]["tuneos"], reverse=True)[:5]
-            if ranking:
-                msg = "🏆 **Ranking mensual de mecánicos:**\n"
-                for i, (uid, datos) in enumerate(ranking, 1):
-                    user = canal.guild.get_member(uid)
-                    nombre = user.display_name if user else f"ID:{uid}"
-                    msg += f"{i}️⃣ {nombre} - {datos['tuneos']} tuneos\n"
-                await canal.send(msg)
-    except Exception:
-        pass
-
-# ------------------------------
-# Función para enviar anuncio embed (sin mencionar staff)
+# Función para enviar anuncio embed (modificada: se quita la sección del "comando especial")
 # ------------------------------
 async def enviar_anuncio():
-    canal = bot.get_channel(CANAL_ANUNCIOS)
+    canal = safe_get_channel(CANAL_ANUNCIOS)
     if canal is None:
         return
     embed = discord.Embed(
@@ -309,13 +349,6 @@ async def enviar_anuncio():
         inline=False
     )
 
-    embed.add_field(
-        name="⚠️ Comando especial",
-        value="El comando `!cambiarrol @usuario <id_rol>` es **exclusivo del Propietario** (rol propietario). "
-              "Los demás deben usar siempre los botones.",
-        inline=False
-    )
-
     embed.set_footer(text="🔧 Overspeed RP | Taller Oficial")
     try:
         await canal.send(embed=embed)
@@ -323,11 +356,13 @@ async def enviar_anuncio():
         pass
 
 # ------------------------------
-# Comandos: historial y borrar (verificados por roles)
+# Comandos de texto existentes (historial, borrar, cambiarrol)
+# - No se cambian sus permisos originales
 # ------------------------------
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
 async def historial(ctx, member: discord.Member):
+    """Muestra el historial (individual) de un miembro. Igual que antes."""
     uid = member.id
     if uid not in historial_tuneos:
         return await ctx.send(f"❌ {member.display_name} no tiene tuneos registrados.")
@@ -337,10 +372,10 @@ async def historial(ctx, member: discord.Member):
         try:
             msg += f"- {fecha.strftime('%d/%m/%Y %H:%M')} → ${dinero:,} ({detalle})\n"
         except Exception:
-            # en caso de datos mal formateados
             msg += f"- {fecha} → ${dinero:,} ({detalle})\n"
     msg += f"\n🔧 Total: {datos['tuneos']} tuneos | 💰 ${datos['dinero_total']:,}"
     await ctx.send(msg)
+
 
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
@@ -348,13 +383,10 @@ async def borrar(ctx, cantidad: int):
     deleted = await ctx.channel.purge(limit=cantidad + 1)
     await ctx.send(f"🧹 Se borraron {len(deleted)-1 if len(deleted)>0 else 0} mensajes.", delete_after=5)
 
-# ------------------------------
-# Comando cambiarrol - SOLO PROPIETARIO
-# ------------------------------
+
 @bot.command()
 async def cambiarrol(ctx, miembro: discord.Member, id_rol: int):
     """Cambia el rol y apodo de un usuario (solo propietario)."""
-    # Verificación estricta: solo si el autor tiene el rol propietario
     if ROL_PROPIETARIO not in [r.id for r in ctx.author.roles]:
         await ctx.send("❌ Solo el Propietario puede usar este comando.")
         return
@@ -369,7 +401,6 @@ async def cambiarrol(ctx, miembro: discord.Member, id_rol: int):
         await ctx.send("❌ Ese rol no tiene prefijo configurado.")
         return
 
-    # Quitar otros roles de apodo si los tuviera
     roles_a_quitar = [ctx.guild.get_role(rid) for rid in ROLES_APODOS.keys() if rid != id_rol]
     try:
         await miembro.remove_roles(*[r for r in roles_a_quitar if r in miembro.roles])
@@ -397,45 +428,66 @@ async def cambiarrol(ctx, miembro: discord.Member, id_rol: int):
         await ctx.send("⚠️ El apodo de este usuario no tiene el formato esperado. Formato esperado: `[emoji] ROL | Nombre | ID`")
 
 # ------------------------------
-# on_ready -> iniciar tareas y crear vistas con botones
+# Nuevo: comando para crear anuncios embed desde chat
+# Uso:
+#  - Modo por defecto (envía a CANAL_ANUNCIOS):
+#      !anunciar Titulo | Descripción larga del anuncio
+#  - Modo especificando canal (primer bloque solo números => canal_id):
+#      !anunciar 123456789012345678 | Titulo | Descripción
+# Permisos: roles listados en ROLES_HISTORIAL_TOTAL
 # ------------------------------
-@bot.event
-async def on_ready():
-    print(f"Bot conectado como {bot.user}")
+@bot.command(name="anunciar")
+@commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
+async def anunciar(ctx, *, args: str):
+    """Crea y envía un embed de anuncio. Ver comentarios arriba para el uso."""
+    parts = [p.strip() for p in args.split('|', 2)]
+    if len(parts) < 2:
+        return await ctx.send("Uso: `!anunciar [canal_id] | Titulo | Descripción`  (si no pones canal_id, se usa el canal por defecto).")
 
-    # Iniciar tareas
-    try:
-        rotar_estado.start()
-    except Exception:
-        pass
-    try:
-        avisar_miembros_identificacion.start()
-    except Exception:
-        pass
-    try:
-        keep_alive.start()
-    except Exception:
-        pass
-    try:
-        ranking_task.start()
-    except Exception:
-        pass
+    # Si el primer bloque parece un ID de canal (solo dígitos), lo usamos
+    if parts[0].isdigit() and len(parts) > 1 and len(parts[0]) > 5:
+        try:
+            canal_id = int(parts[0])
+        except Exception:
+            return await ctx.send("ID de canal inválido.")
+        if len(parts) < 3:
+            return await ctx.send("Si especificas canal_id, usa: canal_id | Titulo | Descripción")
+        title = parts[1]
+        description = parts[2]
+        canal = safe_get_channel(canal_id)
+        if canal is None:
+            return await ctx.send("No encuentro ese canal. Asegúrate de que el ID está correcto y que el bot puede ver el canal.")
+    else:
+        # usar canal por defecto
+        canal = safe_get_channel(CANAL_ANUNCIOS)
+        title = parts[0]
+        description = parts[1] if len(parts) > 1 else ""
+        if canal is None:
+            return await ctx.send("Canal de anuncios por defecto no configurado en el bot.")
 
-    # Enviar anuncio embed (sin staff)
+    embed = discord.Embed(title=f"📢 {title}", description=description, color=discord.Color.orange())
     try:
-        await enviar_anuncio()
+        await canal.send(embed=embed)
+        await ctx.send("✅ Anuncio enviado.", delete_after=5)
     except Exception:
-        pass
+        await ctx.send("❌ Error al enviar el anuncio. Revisa permisos del bot y del canal.")
 
-    # Botones y vistas
-    # Identificación (canal de identificación)
-    canal_identificacion = bot.get_channel(CANAL_IDENTIFICACION)
+# ------------------------------
+# Función que construye y envía las vistas con botones (identificación, turnos, tuneos, historial)
+# - Esta función encapsula la lógica que antes estaba en on_ready para crear/adjuntar vistas
+# - Mantiene exactamente las mismas interacciones y mensajes de respuesta que el script original
+# ------------------------------
+async def construir_y_enviar_vistas():
+    # Identificación
+    canal_identificacion = safe_get_channel(CANAL_IDENTIFICACION)
     if canal_identificacion:
         try:
             view_ident = View(timeout=None)
             btn_ident = Button(label="📝 Identifícate como mecánico", style=discord.ButtonStyle.green)
+
             async def ident_callback(interaction: discord.Interaction):
                 await interaction.response.send_modal(IdentificacionModal())
+
             btn_ident.callback = ident_callback
             view_ident.add_item(btn_ident)
             await canal_identificacion.send(
@@ -445,12 +497,13 @@ async def on_ready():
         except Exception:
             pass
 
-    # Turnos (canal de turnos)
-    canal_turnos = bot.get_channel(CANAL_TURNOS)
+    # Turnos (iniciar / finalizar / historial total)
+    canal_turnos = safe_get_channel(CANAL_TURNOS)
     if canal_turnos:
         try:
             view_turno = View(timeout=None)
             button_turno = Button(label="⏱️ Iniciar Turno", style=discord.ButtonStyle.green)
+
             async def iniciar_callback(interaction: discord.Interaction):
                 uid = interaction.user.id
                 await interaction.response.defer(ephemeral=True)
@@ -460,10 +513,12 @@ async def on_ready():
                     return await interaction.followup.send("❌ Ya tienes un turno activo.", ephemeral=True)
                 turnos_activos[uid] = {"dinero": 0, "inicio": datetime.now(zona)}
                 await interaction.followup.send("✅ Tu turno ha comenzado.", ephemeral=True)
+
             button_turno.callback = iniciar_callback
             view_turno.add_item(button_turno)
 
             button_finalizar_turno = Button(label="✅ Finalizar Turno", style=discord.ButtonStyle.red)
+
             async def finalizar_turno_callback(interaction: discord.Interaction):
                 uid = interaction.user.id
                 await interaction.response.defer(ephemeral=True)
@@ -491,6 +546,7 @@ async def on_ready():
                     f"✅ Turno finalizado. Total dinero acumulado: ${total_dinero:,}\n⏱️ Duración: {duracion}",
                     ephemeral=True
                 )
+
             button_finalizar_turno.callback = finalizar_turno_callback
             view_turno.add_item(button_finalizar_turno)
 
@@ -498,28 +554,33 @@ async def on_ready():
         except Exception:
             pass
 
-    # Tuneos (canal de tuneos)
-    canal_tuneos = bot.get_channel(CANAL_TUNEOS)
+    # Tuneos
+    canal_tuneos = safe_get_channel(CANAL_TUNEOS)
     if canal_tuneos:
         try:
             view_tuneos = View(timeout=None)
-            # Botones por cada tuneo
+
             for tuneo, precio in precios_tuneos.items():
                 button = Button(label=f"{tuneo} (${precio:,})", style=discord.ButtonStyle.blurple)
-                async def tuneo_callback(interaction: discord.Interaction, t=tuneo, p=precio):
-                    uid = interaction.user.id
-                    await interaction.response.defer(ephemeral=True)
-                    if uid not in turnos_activos:
-                        return await interaction.followup.send("❌ No tienes un turno activo.", ephemeral=True)
-                    if uid not in tuneos_activos:
-                        tuneos_activos[uid] = {"dinero": 0}
-                    tuneos_activos[uid]["dinero"] += p
-                    total = tuneos_activos[uid]["dinero"]
-                    await interaction.followup.send(f"🔧 Añadido {t}. Total tuneo: ${total:,}", ephemeral=True)
-                button.callback = tuneo_callback
+
+                async def make_tuneo_callback(t=tuneo, p=precio):
+                    async def tuneo_callback(interaction: discord.Interaction):
+                        uid = interaction.user.id
+                        await interaction.response.defer(ephemeral=True)
+                        if uid not in turnos_activos:
+                            return await interaction.followup.send("❌ No tienes un turno activo.", ephemeral=True)
+                        if uid not in tuneos_activos:
+                            tuneos_activos[uid] = {"dinero": 0}
+                        tuneos_activos[uid]["dinero"] += p
+                        total = tuneos_activos[uid]["dinero"]
+                        await interaction.followup.send(f"🔧 Añadido {t}. Total tuneo: ${total:,}", ephemeral=True)
+                    return tuneo_callback
+
+                button.callback = await make_tuneo_callback()
                 view_tuneos.add_item(button)
 
             button_finalizar_tuneo = Button(label="✅ Finalizar Tuneo", style=discord.ButtonStyle.green)
+
             async def finalizar_tuneo_callback(interaction: discord.Interaction):
                 uid = interaction.user.id
                 await interaction.response.defer(ephemeral=True)
@@ -536,10 +597,9 @@ async def on_ready():
                 historial_tuneos[uid]["detalle"].append(
                     (datetime.now(zona), dinero_tuneo, "Tuneo completado")
                 )
-                # Premio/Notificación para milestones -> lo enviamos al canal de ranking (visibilidad para mecánicos)
                 try:
                     if historial_tuneos[uid]["tuneos"] in [50, 100, 200]:
-                        canal = bot.get_channel(CANAL_RANKING)
+                        canal = safe_get_channel(CANAL_RANKING)
                         if canal:
                             await canal.send(
                                 f"🎉 ¡Felicidades <@{uid}>! Has alcanzado {historial_tuneos[uid]['tuneos']} tuneos, premio disponible 🎁."
@@ -550,6 +610,7 @@ async def on_ready():
                     f"✅ Tuneo finalizado. Dinero: ${dinero_tuneo:,} registrado como 1 tuneo.",
                     ephemeral=True
                 )
+
             button_finalizar_tuneo.callback = finalizar_tuneo_callback
             view_tuneos.add_item(button_finalizar_tuneo)
 
@@ -557,31 +618,84 @@ async def on_ready():
         except Exception:
             pass
 
-    # Historial total: botón en canal de turnos (solo usuarios con roles de historial pueden verlo)
+    # Historial total (antes se enviaba ephemerally al usuario; ahora el contenido se envía SOLO al CANAL_STAFF)
     if canal_turnos:
         try:
             view_historial = View(timeout=None)
             button_historial = Button(label="📋 Historial Total", style=discord.ButtonStyle.gray)
+
             async def historial_callback(interaction: discord.Interaction):
                 await interaction.response.defer(ephemeral=True)
+                # comprobar permisos
                 if not any(role.id in ROLES_HISTORIAL_TOTAL for role in interaction.user.roles):
                     await interaction.followup.send("❌ No tienes permiso para ver el historial completo.", ephemeral=True)
                     return
                 if not historial_tuneos:
                     await interaction.followup.send("❌ No hay tuneos registrados.", ephemeral=True)
                     return
+
+                canal_staff = safe_get_channel(CANAL_STAFF)
+                if canal_staff is None:
+                    # Si no está configurado el canal de staff, avisamos al usuario que lo configure
+                    await interaction.followup.send("⚠️ El canal de staff no está configurado. Contacta con el administrador.", ephemeral=True)
+                    return
+
+                # Construimos el mensaje del historial (misma información que antes)
                 msg = "📋 Historial completo de tuneos:\n"
                 for uid, datos in historial_tuneos.items():
                     user = interaction.guild.get_member(uid)
                     nombre = user.display_name if user else f"ID:{uid}"
                     total_tuneos = datos.get("tuneos", 0)
                     msg += f"- {nombre}: {total_tuneos} tuneos\n"
-                await interaction.followup.send(msg, ephemeral=True)
+
+                try:
+                    await canal_staff.send(msg)
+                    await interaction.followup.send("✅ Historial enviado al canal de staff.", ephemeral=True)
+                except Exception:
+                    await interaction.followup.send("❌ No pude enviar el historial al canal de staff (revisa permisos).", ephemeral=True)
+
             button_historial.callback = historial_callback
             view_historial.add_item(button_historial)
             await canal_turnos.send("Pulsa el botón para ver el historial completo de tuneos (solo roles autorizados):", view=view_historial)
         except Exception:
             pass
+
+# ------------------------------
+# on_ready: arranca tareas y construye vistas
+# ------------------------------
+@bot.event
+async def on_ready():
+    print(f"Bot conectado como {bot.user}")
+
+    # Iniciar tareas (si ya están iniciadas, .start() lanza excepción y pasamos)
+    try:
+        rotar_estado.start()
+    except Exception:
+        pass
+    try:
+        avisar_miembros_identificacion.start()
+    except Exception:
+        pass
+    try:
+        keep_alive.start()
+    except Exception:
+        pass
+    try:
+        ranking_task.start()
+    except Exception:
+        pass
+
+    # Enviar anuncio embed inicial (sin mencionar comando especial)
+    try:
+        await enviar_anuncio()
+    except Exception:
+        pass
+
+    # Construir y enviar las vistas con botones a sus canales
+    try:
+        await construir_y_enviar_vistas()
+    except Exception:
+        pass
 
 # ------------------------------
 # Ejecutar bot
