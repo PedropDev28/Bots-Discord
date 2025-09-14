@@ -100,7 +100,7 @@ CANAL_ANUNCIOS = 1387551821224214839
 # <<< IMPORTANTE >>>
 # PON AQUÍ EL ID DEL CANAL DE STAFF (channel donde quieres que llegue el "historial completo")
 # Si lo dejas en None, el botón avisará que no está configurado.
-CANAL_STAFF = None  # ej: 123456789012345678
+CANAL_STAFF = 1415964136550043689  # ej: 123456789012345678
 
 # ------------------------------
 # Estado runtime (estructuras de datos in-memory)
