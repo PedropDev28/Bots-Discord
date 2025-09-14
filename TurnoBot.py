@@ -106,7 +106,7 @@ CANAL_STAFF = None  # ej: 123456789012345678
 # Estado runtime (estructuras de datos in-memory)
 # ------------------------------
 turnos_activos = {}      # user_id -> {"dinero": int, "inicio": datetime}
- tuneos_activos = {}      # user_id -> {"dinero": int}
+tuneos_activos = {}      # user_id -> {"dinero": int}
 historial_tuneos = {}    # user_id -> {"dinero_total": int, "tuneos": int, "detalle": list}
 avisados_identificacion = set()
 
