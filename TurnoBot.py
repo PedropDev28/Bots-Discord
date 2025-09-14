@@ -88,7 +88,7 @@ ROLES_APODOS = {
 # - CANAL_ANUNCIOS: canal por defecto donde enviar anuncios
 # - CANAL_STAFF: canal del staff donde enviar el historial completo (DEBE CONFIGURARSE)
 # ------------------------------
-CANAL_IDENTIFICACION = 1398583186610716682
+CANAL_IDENTIFICACION = 1416880543122849802
 ROLE_APRENDIZ = 1385301435456950390
 ROLE_OVERSPEED = 1387571297705394250
 CANAL_TURNOS = 1415949790545711236
@@ -499,6 +499,7 @@ async def construir_y_enviar_vistas():
 
     # Turnos (iniciar / finalizar / historial total)
     canal_turnos = safe_get_channel(CANAL_TURNOS)
+    canal_staff = safe_get_channel(CANAL_STAFF)
     if canal_turnos:
         try:
             view_turno = View(timeout=None)
@@ -619,7 +620,7 @@ async def construir_y_enviar_vistas():
             pass
 
     # Historial total (antes se enviaba ephemerally al usuario; ahora el contenido se envía SOLO al CANAL_STAFF)
-    if canal_turnos:
+    if canal_staff:
         try:
             view_historial = View(timeout=None)
             button_historial = Button(label="📋 Historial Total", style=discord.ButtonStyle.gray)
