@@ -148,6 +148,54 @@ def safe_get_channel(channel_id: int):
         return None
     return bot.get_channel(channel_id)
 
+
+async def safe_send_interaction(interaction: discord.Interaction, content: str, *, ephemeral: bool = True):
+    """Envía un mensaje respondiendo a una interacción de forma robusta.
+
+    Intentos en orden:
+      1. interaction.response.send_message (si no se ha respondido)
+      2. interaction.followup.send
+      3. interaction.channel.send
+      4. interaction.user.send (DM)
+
+    Atrapa discord.NotFound (webhook eliminado) y otros errores para evitar que la excepción propague.
+    """
+    try:
+        if not interaction.response.is_done:
+            await interaction.response.send_message(content, ephemeral=ephemeral)
+            return
+        # response ya fue usada, intentar followup
+        try:
+            await interaction.followup.send(content, ephemeral=ephemeral)
+            return
+        except discord.NotFound:
+            # webhook de interacción desconocido; caemos a fallback
+            pass
+        except Exception:
+            # cualquier otro error al hacer followup, intentamos fallback
+            pass
+
+        # fallback a enviar en canal público
+        try:
+            if interaction.channel:
+                await interaction.channel.send(content)
+                return
+        except Exception:
+            pass
+
+        # último recurso: DM al usuario
+        try:
+            await interaction.user.send(content)
+            return
+        except Exception:
+            pass
+    except Exception:
+        # No podemos hacer mucho más; silenciosamente ignoramos
+        try:
+            await interaction.user.send(content)
+        except Exception:
+            pass
+
 # ------------------------------
 # Tareas periódicas
 # ------------------------------
@@ -250,10 +298,7 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
                 rol_aprendiz = interaction.guild.get_role(ROLE_APRENDIZ) if interaction.guild else None
                 if rol_aprendiz and rol_aprendiz in interaction.user.roles and interaction.user.display_name.startswith("🧰 APR"):
                     # responder y salir
-                    if not interaction.response.is_done:
-                        await interaction.response.send_message("⚠️ Ya estás identificado.", ephemeral=True)
-                    else:
-                        await interaction.followup.send("⚠️ Ya estás identificado.", ephemeral=True)
+                    await safe_send_interaction(interaction, "⚠️ Ya estás identificado.")
                     return
             except Exception:
                 # si algo falla con la comprobación, seguimos con la identificación normal
@@ -276,10 +321,7 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
                     except Exception:
                         pass
             except discord.Forbidden:
-                if not interaction.response.is_done:
-                    await interaction.response.send_message("⚠️ No tengo permisos para cambiar tu apodo.", ephemeral=True)
-                else:
-                    await interaction.followup.send("⚠️ No tengo permisos para cambiar tu apodo.", ephemeral=True)
+                await safe_send_interaction(interaction, "⚠️ No tengo permisos para cambiar tu apodo.")
                 if canal_identificacion:
                     try:
                         await canal_identificacion.send(
@@ -334,16 +376,7 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
                 pass
 
             # Responder al usuario indicando éxito
-            if not interaction.response.is_done:
-                await interaction.response.send_message(
-                    f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}",
-                    ephemeral=True
-                )
-            else:
-                await interaction.followup.send(
-                    f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}",
-                    ephemeral=True
-                )
+            await safe_send_interaction(interaction, f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}")
         except Exception as e:
             # Registrar el error en canal de logs si está configurado
             tb = traceback.format_exc()
@@ -361,10 +394,7 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
                 pass
             # Asegurar que el usuario recibe un mensaje de error amigable
             try:
-                if not interaction.response.is_done:
-                    await interaction.response.send_message("❌ Algo salió mal, inténtalo de nuevo. Si el problema persiste, contacta con un administrador.", ephemeral=True)
-                else:
-                    await interaction.followup.send("❌ Algo salió mal, inténtalo de nuevo. Si el problema persiste, contacta con un administrador.", ephemeral=True)
+                await safe_send_interaction(interaction, "❌ Algo salió mal, inténtalo de nuevo. Si el problema persiste, contacta con un administrador.")
             except Exception:
                 # si ni siquiera podemos notificar al usuario, solo ignoramos
                 pass
