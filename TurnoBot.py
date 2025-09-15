@@ -243,6 +243,16 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
     id_ic = TextInput(label="ID IC", placeholder="Ej: 12345", max_length=10)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Evitar doble identificación si el usuario ya tiene el rol y apodo de aprendiz
+        try:
+            rol_aprendiz = interaction.guild.get_role(ROLE_APRENDIZ) if interaction.guild else None
+            if rol_aprendiz and rol_aprendiz in interaction.user.roles and interaction.user.display_name.startswith("🧰 APR"):
+                await interaction.response.send_message("⚠️ Ya estás identificado.", ephemeral=True)
+                return
+        except Exception:
+            # si algo falla, seguimos con la identificación normal
+            pass
+
         nuevo_apodo = f"🧰 APR | {self.nombre_ic.value} | {self.id_ic.value}"
         canal_identificacion = interaction.guild.get_channel(CANAL_RESULTADO_IDENTIFICACION)
         try:
@@ -383,17 +393,31 @@ async def historial(ctx):
         )
         await ctx.send(embed=embed)
         return
-
-    texto = ""
+    lines = []
     for uid, datos in historial_tuneos.items():
-        rol = datos.get("rol", "")
-        nombre = datos.get("nombre", "")
+        # intentar convertir a int y buscar miembro en el guild
+        try:
+            uid_int = int(uid)
+        except Exception:
+            uid_int = uid
+        miembro = ctx.guild.get_member(uid_int) if ctx.guild else None
+        if miembro:
+            apodo = miembro.display_name
+        else:
+            rol = datos.get("rol", "")
+            nombre = datos.get("nombre", "")
+            if rol and nombre:
+                apodo = f"{rol} | {nombre}"
+            elif nombre:
+                apodo = nombre
+            else:
+                apodo = str(uid)
         tuneos = datos.get("tuneos", 0)
-        texto += f"{rol} | {nombre} | {uid}: {tuneos} tuneos\n"
+        lines.append(f"{apodo} | {uid}: {tuneos} tuneos")
 
     embed = discord.Embed(
         title="📋 Historial completo de tuneos",
-        description=texto,
+        description="\n".join(lines),
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed)
@@ -716,16 +740,35 @@ async def construir_y_enviar_vistas():
                     await interaction.followup.send("⚠️ El canal de staff no está configurado. Contacta con el administrador.", ephemeral=True)
                     return
 
-                # Construimos el mensaje del historial (misma información que antes)
-                msg = "📋 Historial completo de tuneos:\n"
+                # Construimos el embed del historial usando apodos si están disponibles
+                lines = []
                 for uid, datos in historial_tuneos.items():
-                    user = interaction.guild.get_member(uid)
-                    nombre = user.display_name if user else f"ID:{uid}"
-                    total_tuneos = datos.get("tuneos", 0)
-                    msg += f"- {nombre}: {total_tuneos} tuneos\n"
+                    try:
+                        uid_int = int(uid)
+                    except Exception:
+                        uid_int = uid
+                    miembro = interaction.guild.get_member(uid_int) if interaction.guild else None
+                    if miembro:
+                        apodo = miembro.display_name
+                    else:
+                        rol = datos.get("rol", "")
+                        nombre = datos.get("nombre", "")
+                        if rol and nombre:
+                            apodo = f"{rol} | {nombre}"
+                        elif nombre:
+                            apodo = nombre
+                        else:
+                            apodo = str(uid)
+                    tuneos = datos.get("tuneos", 0)
+                    lines.append(f"{apodo} — {tuneos} tuneos")
 
+                embed_hist = discord.Embed(
+                    title="📋 Historial completo de tuneos (staff)",
+                    description="\n".join(lines),
+                    color=discord.Color.blue()
+                )
                 try:
-                    await canal_staff.send(msg)
+                    await canal_staff.send(embed=embed_hist)
                     await interaction.followup.send("✅ Historial enviado al canal de staff.", ephemeral=True)
                 except Exception:
                     await interaction.followup.send("❌ No pude enviar el historial al canal de staff (revisa permisos).", ephemeral=True)
@@ -895,7 +938,7 @@ async def cargar(ctx):
 @bot.command()
 async def identificar(ctx):
     """Ejemplo de verificación antes de identificar."""
-    aprendiz_rol = ctx.guild.get_role(ID_ROL_APRENDIZ)
+    aprendiz_rol = ctx.guild.get_role(ROLE_APRENDIZ)
     if aprendiz_rol in ctx.author.roles and ctx.author.display_name.startswith("🧰 APR"):
         embed = discord.Embed(
             title="✅ Ya estás identificado",
