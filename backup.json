@@ -1,0 +1,19 @@
+{
+  "historial_tuneos": {
+    "17701": {"nombre": "Frigelio Sanchez", "rol": "🧰 APR", "tuneos": 15},
+    "11895": {"nombre": "Gencho", "rol": "🏢PROP", "tuneos": 1},
+    "11933": {"nombre": "elios", "rol": "🧰 APR", "tuneos": 5},
+    "13679": {"nombre": "Cristian Ques", "rol": "⭐ SUBG", "tuneos": 9},
+    "18414": {"nombre": "Ramón Romero", "rol": "🧰 APR", "tuneos": 7},
+    "4615":  {"nombre": "ionut rumañol", "rol": "🌟 GER GEN", "tuneos": 2},
+    "17885": {"nombre": "Juan", "rol": "🧰 APR", "tuneos": 0},
+    "18463": {"nombre": "Petar Ganev", "rol": "🧰 APR", "tuneos": 4},
+    "13653": {"nombre": "Cristian", "rol": "⭐ SUBGER", "tuneos": 4},
+    "18335": {"nombre": "nick miller", "rol": "🧰 APR", "tuneos": 1},
+    "15920": {"nombre": "yago", "rol": "🧰 APR", "tuneos": 3},
+    "17357": {"nombre": "Diego Cruz", "rol": "🧰 APR", "tuneos": 3},
+    "17693": {"nombre": "nano", "rol": "🧰 APR", "tuneos": 6}
+  },
+  "turnos_activos": {},
+  "tuneos_activos": {}
+}
