@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import pytz
 import os
 import itertools
+import matplotlib.pyplot as plt
+import io
+import json
 
 # ==============================
 # Overspeed RP - Bot reestructurado
@@ -87,7 +90,7 @@ ROLES_APODOS = {
 # - CANAL_KEEPALIVE: canal para pings keep-alive
 # - CANAL_ANUNCIOS: canal por defecto donde enviar anuncios
 # - CANAL_STAFF: canal del staff donde enviar el historial completo (DEBE CONFIGURARSE)
-# ------------------------------
+# - CANAL_RESULTADO_IDENTIFICACION: canal donde se envía el resultado de la identificación
 CANAL_IDENTIFICACION = 1416880543122849802
 ROLE_APRENDIZ = 1385301435456950390
 ROLE_OVERSPEED = 1387571297705394250
@@ -96,11 +99,11 @@ CANAL_TUNEOS = 1415963375485321226
 CANAL_RANKING = 1416021337519947858
 CANAL_KEEPALIVE = 1387055864866799637
 CANAL_ANUNCIOS = 1387551821224214839
+CANAL_RESULTADO_IDENTIFICACION = 1417250457163665418
 
-# <<< IMPORTANTE >>>
-# PON AQUÍ EL ID DEL CANAL DE STAFF (channel donde quieres que llegue el "historial completo")
-# Si lo dejas en None, el botón avisará que no está configurado.
-CANAL_STAFF = 1415964136550043689  # ej: 123456789012345678
+
+CANAL_STAFF = 1415964136550043689 
+CANAL_LOGS = 1417250932386959441
 
 # ------------------------------
 # Estado runtime (estructuras de datos in-memory)
@@ -241,10 +244,19 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
 
     async def on_submit(self, interaction: discord.Interaction):
         nuevo_apodo = f"🧰 APR | {self.nombre_ic.value} | {self.id_ic.value}"
+        canal_identificacion = interaction.guild.get_channel(CANAL_RESULTADO_IDENTIFICACION)
         try:
             await interaction.user.edit(nick=nuevo_apodo)
+            if canal_identificacion:
+                await canal_identificacion.send(
+                    f"✅ {interaction.user.mention} identificado correctamente como `{nuevo_apodo}`."
+                )
         except discord.Forbidden:
             await interaction.response.send_message("⚠️ No tengo permisos para cambiar tu apodo.", ephemeral=True)
+            if canal_identificacion:
+                await canal_identificacion.send(
+                    f"❌ Error al identificar a {interaction.user.mention}: No tengo permisos para cambiar el apodo."
+                )
             return
 
         rol1 = interaction.guild.get_role(ROLE_APRENDIZ)
@@ -362,26 +374,46 @@ async def enviar_anuncio():
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
 async def historial(ctx, member: discord.Member):
-    """Muestra el historial (individual) de un miembro. Igual que antes."""
     uid = member.id
     if uid not in historial_tuneos:
-        return await ctx.send(f"❌ {member.display_name} no tiene tuneos registrados.")
+        embed = discord.Embed(
+            title="❌ Sin tuneos registrados",
+            description=f"{member.display_name} no tiene tuneos registrados.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
     datos = historial_tuneos[uid]
-    msg = f"📋 Historial de {member.display_name}:\n"
+    embed = discord.Embed(
+        title=f"📋 Historial de {member.display_name}",
+        color=discord.Color.blue()
+    )
     for fecha, dinero, detalle in datos["detalle"]:
         try:
-            msg += f"- {fecha.strftime('%d/%m/%Y %H:%M')} → ${dinero:,} ({detalle})\n"
+            embed.add_field(
+                name=fecha.strftime('%d/%m/%Y %H:%M'),
+                value=f"${dinero:,} ({detalle})",
+                inline=False
+            )
         except Exception:
-            msg += f"- {fecha} → ${dinero:,} ({detalle})\n"
-    msg += f"\n🔧 Total: {datos['tuneos']} tuneos | 💰 ${datos['dinero_total']:,}"
-    await ctx.send(msg)
+            embed.add_field(
+                name=str(fecha),
+                value=f"${dinero:,} ({detalle})",
+                inline=False
+            )
+    embed.set_footer(text=f"🔧 Total: {datos['tuneos']} tuneos | 💰 ${datos['dinero_total']:,}")
+    await ctx.send(embed=embed)
 
 
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
 async def borrar(ctx, cantidad: int):
     deleted = await ctx.channel.purge(limit=cantidad + 1)
-    await ctx.send(f"🧹 Se borraron {len(deleted)-1 if len(deleted)>0 else 0} mensajes.", delete_after=5)
+    embed = discord.Embed(
+        title="🧹 Mensajes borrados",
+        description=f"Se borraron {len(deleted)-1 if len(deleted)>0 else 0} mensajes.",
+        color=discord.Color.orange()
+    )
+    await ctx.send(embed=embed, delete_after=5)
 
 
 @bot.command()
@@ -422,10 +454,58 @@ async def cambiarrol(ctx, miembro: discord.Member, id_rol: int):
         try:
             await miembro.edit(nick=nuevo_apodo)
             await ctx.send(f"✅ {miembro.mention} ahora es `{nuevo_apodo}` y tiene el rol {rol_obj.mention}")
+            canal_logs = safe_get_channel(CANAL_LOGS)
+            if canal_logs:
+                await canal_logs.send(
+                    f"🔄 {ctx.author.mention} ha cambiado el rol de {miembro.mention} a {rol_obj.mention}.\nNuevo apodo: `{nuevo_apodo}`"
+                )
         except discord.Forbidden:
             await ctx.send("⚠️ No tengo permisos para cambiar el apodo de ese usuario.")
     else:
         await ctx.send("⚠️ El apodo de este usuario no tiene el formato esperado. Formato esperado: `[emoji] ROL | Nombre | ID`")
+
+@bot.command()
+@commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
+async def despedir(ctx, miembro: discord.Member, *, razon="No especificada"):
+    if ctx.author == miembro:
+        embed = discord.Embed(
+            title="❌ Acción no permitida",
+            description="No puedes despedirte a ti mismo.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        return
+    try:
+        await miembro.kick(reason=razon)
+        embed = discord.Embed(
+            title="🚫 Usuario despedido",
+            description=f"{miembro.mention} ha sido despedido del servidor.\nMotivo: {razon}",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        canal_logs = safe_get_channel(CANAL_LOGS)
+        if canal_logs:
+            embed_log = discord.Embed(
+                title="🚫 Despido registrado",
+                description=f"{miembro.mention} fue despedido por {ctx.author.mention}.\nMotivo: {razon}",
+                color=discord.Color.red()
+            )
+            await canal_logs.send(embed=embed_log)
+    except Exception as e:
+        embed = discord.Embed(
+            title="❌ Error al despedir",
+            description=f"No se pudo despedir a {miembro.mention}. Error: {e}",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        canal_logs = safe_get_channel(CANAL_LOGS)
+        if canal_logs:
+            embed_log = discord.Embed(
+                title="❌ Error al despedir",
+                description=f"Error al despedir a {miembro.mention} por {ctx.author.mention}: {e}",
+                color=discord.Color.red()
+            )
+            await canal_logs.send(embed=embed_log)
 
 # ------------------------------
 # Nuevo: comando para crear anuncios embed desde chat
@@ -685,6 +765,10 @@ async def on_ready():
         ranking_task.start()
     except Exception:
         pass
+    try:
+        backup_task.start()
+    except Exception:
+        pass
 
     # Enviar anuncio embed inicial (sin mencionar comando especial)
     try:
@@ -697,6 +781,59 @@ async def on_ready():
         await construir_y_enviar_vistas()
     except Exception:
         pass
+
+@bot.command()
+@commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
+async def dashboard(ctx):
+    if not historial_tuneos:
+        embed = discord.Embed(
+            title="Sin datos",
+            description="No hay datos de tuneos registrados.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        return
+    datos = [v["tuneos"] for v in historial_tuneos.values()]
+    nombres = []
+    for uid in historial_tuneos.keys():
+        miembro = ctx.guild.get_member(uid)
+        nombres.append(miembro.display_name if miembro else str(uid))
+    plt.figure(figsize=(10, 5))
+    plt.bar(nombres, datos, color='skyblue')
+    plt.xticks(rotation=45, ha='right')
+    plt.title("Tuneos por mecánico")
+    plt.xlabel("Mecánico")
+    plt.ylabel("Tuneos")
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    embed = discord.Embed(
+        title="📊 Dashboard de actividad",
+        description="Gráfico de tuneos por mecánico.",
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed, file=discord.File(buf, filename="dashboard.png"))
+    plt.close()
+
+# ------------------------------
+# Backup: guardar historial y configuración cada 6 horas
+# ------------------------------
+@tasks.loop(hours=6)
+async def backup_task():
+    """Guarda backup del historial y configuración cada 6 horas."""
+    backup = {
+        "historial_tuneos": historial_tuneos,
+        "turnos_activos": turnos_activos,
+        "tuneos_activos": tuneos_activos
+    }
+    try:
+        with open("/workspaces/Bots-Discord/backup.json", "w") as f:
+            json.dump(backup, f, default=str)
+    except Exception as e:
+        canal_logs = safe_get_channel(CANAL_LOGS)
+        if canal_logs:
+            await canal_logs.send(f"❌ Error al guardar backup: {e}")
 
 # ------------------------------
 # Ejecutar bot
