@@ -1,5 +1,3 @@
 discord.py
 pytz
-itertools
-json
 matplotlib
