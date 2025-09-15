@@ -836,6 +836,65 @@ async def backup_task():
             await canal_logs.send(f"❌ Error al guardar backup: {e}")
 
 # ------------------------------
+# Comandos para guardar y cargar datos manualmente
+# ------------------------------
+import json
+import os
+
+BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'backup.json')
+
+@bot.command()
+@commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
+async def guardar(ctx):
+    """Guarda manualmente los datos actuales en backup.json."""
+    backup = {
+        "historial_tuneos": historial_tuneos,
+        "turnos_activos": turnos_activos,
+        "tuneos_activos": tuneos_activos
+    }
+    try:
+        with open(BACKUP_PATH, "w") as f:
+            json.dump(backup, f, default=str)
+        embed = discord.Embed(
+            title="✅ Datos guardados",
+            description="Los datos se han guardado correctamente.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+    except Exception as e:
+        embed = discord.Embed(
+            title="❌ Error al guardar",
+            description=str(e),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
+async def cargar(ctx):
+    """Carga los datos guardados desde backup.json."""
+    global historial_tuneos, turnos_activos, tuneos_activos
+    try:
+        with open(BACKUP_PATH, "r") as f:
+            backup = json.load(f)
+        historial_tuneos = backup.get("historial_tuneos", {})
+        turnos_activos = backup.get("turnos_activos", {})
+        tuneos_activos = backup.get("tuneos_activos", {})
+        embed = discord.Embed(
+            title="✅ Datos cargados",
+            description="Los datos se han restaurado correctamente.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+    except Exception as e:
+        embed = discord.Embed(
+            title="❌ Error al cargar",
+            description=str(e),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+
+# ------------------------------
 # Ejecutar bot
 # ------------------------------
 if __name__ == "__main__":
