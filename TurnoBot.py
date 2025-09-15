@@ -684,96 +684,18 @@ async def construir_y_enviar_vistas():
                 except Exception:
                     pass
 
-                # Informar al usuario (ephemeral) que debe responder en el canal y que sus mensajes serán borrados
-                msg = await safe_send_interaction(interaction, "Por favor responde en este canal con tu **NOMBRE IC**. Tu mensaje será eliminado inmediatamente después de recibirlo.")
-
-                def check_nombre(m: discord.Message):
-                    return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
-
+                # Abrir el formulario (Modal). Las respuestas y confirmaciones serán privadas (efímeras).
                 try:
-                    msg_nombre = await bot.wait_for('message', check=check_nombre, timeout=120.0)
+                    await interaction.response.send_modal(IdentificacionModal())
                 except Exception:
-                    await safe_send_interaction(interaction, "⏱️ Tiempo agotado para responder con el nombre. Intenta de nuevo.")
-                    return
-
-                nombre_ic = msg_nombre.content.strip()
-                # intentar borrar el mensaje del usuario para que no quede en el canal
-                try:
-                    await msg_nombre.delete()
-                except Exception:
-                    pass
-
-                msg2 = await safe_send_interaction(interaction, "✅ Nombre recibido.")
-                # intentar borrar el mensaje del bot para mantener el canal limpio
-                try:
-                    if msg2 is not None:
-                        await asyncio.sleep(5)
-                        await msg2.delete()
-                except Exception:
-                    pass
-
-                # Pedir ID IC de forma similar
-                msg3 = await safe_send_interaction(interaction, "Ahora responde en este canal con tu **ID IC**. También se borrará tu mensaje.")
-                try:
-                    if msg3 is not None:
-                        await asyncio.sleep(5)
-                        await msg3.delete()
-                except Exception:
-                    pass
-
-                def check_id(m: discord.Message):
-                    return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
-
-                try:
-                    msg_idic = await bot.wait_for('message', check=check_id, timeout=120.0)
-                except Exception:
-                    await safe_send_interaction(interaction, "⏱️ Tiempo agotado para responder con el ID. Intenta de nuevo.")
-                    return
-
-                id_ic = msg_idic.content.strip()
-                try:
-                    await msg_idic.delete()
-                except Exception:
-                    pass
-
-                nuevo_apodo = f"🧰 APR | {nombre_ic} | {id_ic}"
-
-                # Intentar aplicar apodo y roles
-                try:
-                    await interaction.user.edit(nick=nuevo_apodo)
-                except Exception:
-                    await safe_send_interaction(interaction, "⚠️ No pude cambiar tu apodo. Revisa permisos del bot.")
-
-                try:
-                    rol1 = interaction.guild.get_role(ROLE_APRENDIZ)
-                    rol2 = interaction.guild.get_role(ROLE_OVERSPEED)
-                    if rol1:
-                        await interaction.user.add_roles(rol1)
-                    if rol2:
-                        await interaction.user.add_roles(rol2)
-                except Exception:
-                    await safe_send_interaction(interaction, "⚠️ No pude asignarte uno o más roles. Contacta con un administrador.")
-
-                # Registrar en canal de resultado
-                try:
-                    canal_res = interaction.guild.get_channel(CANAL_RESULTADO_IDENTIFICACION)
-                    if canal_res:
-                        await canal_res.send(f"✅ {interaction.user.mention} identificado correctamente como `{nuevo_apodo}`.")
-                except Exception:
-                    pass
-
-                msg_fin = await safe_send_interaction(interaction, f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}")
-                try:
-                    if msg_fin is not None:
-                        await asyncio.sleep(5)
-                        await msg_fin.delete()
-                except Exception:
-                    pass
+                    # Fallback si el modal falla por alguna razón
+                    await safe_send_interaction(interaction, "❌ No pude abrir el formulario. Intenta de nuevo más tarde o contacta con un administrador.")
 
             btn_ident.callback = ident_callback
             view_ident.add_item(btn_ident)
             await canal_identificacion.send(
-                "Haz click en el botón para identificarte y rellenar el formulario de mecánico:",
+                "Haz clic en el botón para identificarte y rellenar el formulario de mecánico.\n"
+                "Las respuestas y confirmaciones serán privadas (solo tú las verás).",
                 view=view_ident
             )
         except Exception:
