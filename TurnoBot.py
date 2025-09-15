@@ -373,34 +373,29 @@ async def enviar_anuncio():
 # ------------------------------
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
-async def historial(ctx, member: discord.Member):
-    uid = member.id
-    if uid not in historial_tuneos:
+async def historial(ctx):
+    """Muestra el historial completo de tuneos en un embed bonito."""
+    if not historial_tuneos:
         embed = discord.Embed(
-            title="❌ Sin tuneos registrados",
-            description=f"{member.display_name} no tiene tuneos registrados.",
+            title="📋 Historial de tuneos",
+            description="No hay tuneos registrados.",
             color=discord.Color.red()
         )
-        return await ctx.send(embed=embed)
-    datos = historial_tuneos[uid]
+        await ctx.send(embed=embed)
+        return
+
+    texto = ""
+    for uid, datos in historial_tuneos.items():
+        rol = datos.get("rol", "")
+        nombre = datos.get("nombre", "")
+        tuneos = datos.get("tuneos", 0)
+        texto += f"{rol} | {nombre} | {uid}: {tuneos} tuneos\n"
+
     embed = discord.Embed(
-        title=f"📋 Historial de {member.display_name}",
+        title="📋 Historial completo de tuneos",
+        description=texto,
         color=discord.Color.blue()
     )
-    for fecha, dinero, detalle in datos["detalle"]:
-        try:
-            embed.add_field(
-                name=fecha.strftime('%d/%m/%Y %H:%M'),
-                value=f"${dinero:,} ({detalle})",
-                inline=False
-            )
-        except Exception:
-            embed.add_field(
-                name=str(fecha),
-                value=f"${dinero:,} ({detalle})",
-                inline=False
-            )
-    embed.set_footer(text=f"🔧 Total: {datos['tuneos']} tuneos | 💰 ${datos['dinero_total']:,}")
     await ctx.send(embed=embed)
 
 
@@ -893,6 +888,23 @@ async def cargar(ctx):
             color=discord.Color.red()
         )
         await ctx.send(embed=embed)
+
+# ------------------------------
+# Comando de identificación manual (ejemplo simple, sin botones)
+# ------------------------------
+@bot.command()
+async def identificar(ctx):
+    """Ejemplo de verificación antes de identificar."""
+    aprendiz_rol = ctx.guild.get_role(ID_ROL_APRENDIZ)
+    if aprendiz_rol in ctx.author.roles and ctx.author.display_name.startswith("🧰 APR"):
+        embed = discord.Embed(
+            title="✅ Ya estás identificado",
+            description="Ya tienes el rol de aprendiz y el apodo configurado.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+        return
+    # Aquí iría el resto de la lógica de identificación, si es necesario
 
 # ------------------------------
 # Ejecutar bot
