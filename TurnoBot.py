@@ -8,6 +8,7 @@ import itertools
 import matplotlib.pyplot as plt
 import io
 import json
+import traceback
 
 # ==============================
 # Overspeed RP - Bot reestructurado
@@ -243,75 +244,130 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
     id_ic = TextInput(label="ID IC", placeholder="Ej: 12345", max_length=10)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Evitar doble identificación si el usuario ya tiene el rol y apodo de aprendiz
         try:
-            rol_aprendiz = interaction.guild.get_role(ROLE_APRENDIZ) if interaction.guild else None
-            if rol_aprendiz and rol_aprendiz in interaction.user.roles and interaction.user.display_name.startswith("🧰 APR"):
-                await interaction.response.send_message("⚠️ Ya estás identificado.", ephemeral=True)
+            # Evitar doble identificación si el usuario ya tiene el rol y apodo de aprendiz
+            try:
+                rol_aprendiz = interaction.guild.get_role(ROLE_APRENDIZ) if interaction.guild else None
+                if rol_aprendiz and rol_aprendiz in interaction.user.roles and interaction.user.display_name.startswith("🧰 APR"):
+                    # responder y salir
+                    if not interaction.response.is_done:
+                        await interaction.response.send_message("⚠️ Ya estás identificado.", ephemeral=True)
+                    else:
+                        await interaction.followup.send("⚠️ Ya estás identificado.", ephemeral=True)
+                    return
+            except Exception:
+                # si algo falla con la comprobación, seguimos con la identificación normal
+                pass
+
+            nuevo_apodo = f"🧰 APR | {self.nombre_ic.value} | {self.id_ic.value}"
+            canal_identificacion = None
+            try:
+                canal_identificacion = interaction.guild.get_channel(CANAL_RESULTADO_IDENTIFICACION)
+            except Exception:
+                canal_identificacion = None
+
+            try:
+                await interaction.user.edit(nick=nuevo_apodo)
+                if canal_identificacion:
+                    try:
+                        await canal_identificacion.send(
+                            f"✅ {interaction.user.mention} identificado correctamente como `{nuevo_apodo}`."
+                        )
+                    except Exception:
+                        pass
+            except discord.Forbidden:
+                if not interaction.response.is_done:
+                    await interaction.response.send_message("⚠️ No tengo permisos para cambiar tu apodo.", ephemeral=True)
+                else:
+                    await interaction.followup.send("⚠️ No tengo permisos para cambiar tu apodo.", ephemeral=True)
+                if canal_identificacion:
+                    try:
+                        await canal_identificacion.send(
+                            f"❌ Error al identificar a {interaction.user.mention}: No tengo permisos para cambiar el apodo."
+                        )
+                    except Exception:
+                        pass
                 return
-        except Exception:
-            # si algo falla, seguimos con la identificación normal
-            pass
 
-        nuevo_apodo = f"🧰 APR | {self.nombre_ic.value} | {self.id_ic.value}"
-        canal_identificacion = interaction.guild.get_channel(CANAL_RESULTADO_IDENTIFICACION)
-        try:
-            await interaction.user.edit(nick=nuevo_apodo)
-            if canal_identificacion:
-                await canal_identificacion.send(
-                    f"✅ {interaction.user.mention} identificado correctamente como `{nuevo_apodo}`."
-                )
-        except discord.Forbidden:
-            await interaction.response.send_message("⚠️ No tengo permisos para cambiar tu apodo.", ephemeral=True)
-            if canal_identificacion:
-                await canal_identificacion.send(
-                    f"❌ Error al identificar a {interaction.user.mention}: No tengo permisos para cambiar el apodo."
-                )
-            return
-
-        rol1 = interaction.guild.get_role(ROLE_APRENDIZ)
-        rol2 = interaction.guild.get_role(ROLE_OVERSPEED)
-        if rol1:
-            try:
-                await interaction.user.add_roles(rol1)
-            except Exception:
-                pass
-        if rol2:
-            try:
-                await interaction.user.add_roles(rol2)
-            except Exception:
-                pass
-
-        # Registrar física/privadamente la identificación dentro de un thread del canal de identificación
-        canal = interaction.guild.get_channel(CANAL_IDENTIFICACION)
-        thread_name = "Identificaciones Mecánicos"
-        thread = None
-        if canal:
-            async for th in canal.threads:
-                if th.name == thread_name:
-                    thread = th
-                    break
-            if thread is None:
+            # Añadir roles de aprendiz y overspeed
+            rol1 = interaction.guild.get_role(ROLE_APRENDIZ)
+            rol2 = interaction.guild.get_role(ROLE_OVERSPEED)
+            if rol1:
                 try:
-                    thread = await canal.create_thread(
-                        name=thread_name,
-                        type=discord.ChannelType.private_thread,
-                        invitable=False
-                    )
-                    await thread.edit(invitable=False)
+                    await interaction.user.add_roles(rol1)
                 except Exception:
-                    thread = None
-            if thread:
+                    pass
+            if rol2:
                 try:
-                    msg = await thread.send(f"{interaction.user.mention} identificado como: **{nuevo_apodo}**")
-                    await msg.add_reaction("✅")
+                    await interaction.user.add_roles(rol2)
                 except Exception:
                     pass
 
-        await interaction.response.send_message(
-            f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}",
-            ephemeral=True
-        )
+            # Registrar la identificación en un thread privado del canal de identificación (si existe)
+            try:
+                canal = interaction.guild.get_channel(CANAL_IDENTIFICACION)
+                thread_name = "Identificaciones Mecánicos"
+                thread = None
+                if canal:
+                    async for th in canal.threads:
+                        if th.name == thread_name:
+                            thread = th
+                            break
+                    if thread is None:
+                        try:
+                            thread = await canal.create_thread(
+                                name=thread_name,
+                                type=discord.ChannelType.private_thread,
+                                invitable=False
+                            )
+                            await thread.edit(invitable=False)
+                        except Exception:
+                            thread = None
+                    if thread:
+                        try:
+                            msg = await thread.send(f"{interaction.user.mention} identificado como: **{nuevo_apodo}**")
+                            await msg.add_reaction("✅")
+                        except Exception:
+                            pass
+            except Exception:
+                # no bloqueamos si falla el thread
+                pass
+
+            # Responder al usuario indicando éxito
+            if not interaction.response.is_done:
+                await interaction.response.send_message(
+                    f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}",
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}",
+                    ephemeral=True
+                )
+        except Exception as e:
+            # Registrar el error en canal de logs si está configurado
+            tb = traceback.format_exc()
+            canal_logs = safe_get_channel(CANAL_LOGS)
+            if canal_logs:
+                try:
+                    await canal_logs.send(f"❌ Error en IdentificacionModal.on_submit para <@{interaction.user.id}>: {e}\n```{tb[:1900]}```")
+                except Exception:
+                    pass
+            # Además guardamos el traceback en un archivo local para diagnóstico
+            try:
+                with open(os.path.join(os.path.dirname(__file__), 'ident_errors.log'), 'a') as lf:
+                    lf.write(f"[{datetime.now(zona)}] Error en IdentificacionModal.on_submit para {interaction.user.id}: {e}\n{tb}\n---\n")
+            except Exception:
+                pass
+            # Asegurar que el usuario recibe un mensaje de error amigable
+            try:
+                if not interaction.response.is_done:
+                    await interaction.response.send_message("❌ Algo salió mal, inténtalo de nuevo. Si el problema persiste, contacta con un administrador.", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ Algo salió mal, inténtalo de nuevo. Si el problema persiste, contacta con un administrador.", ephemeral=True)
+            except Exception:
+                # si ni siquiera podemos notificar al usuario, solo ignoramos
+                pass
 
 # ------------------------------
 # Listener: borrar mensajes que escriban en el canal de identificación
@@ -585,6 +641,14 @@ async def construir_y_enviar_vistas():
             btn_ident = Button(label="📝 Identifícate como mecánico", style=discord.ButtonStyle.green)
 
             async def ident_callback(interaction: discord.Interaction):
+                # Comprobar si ya está identificado para evitar abrir modal innecesario
+                try:
+                    rol_aprendiz = interaction.guild.get_role(ROLE_APRENDIZ) if interaction.guild else None
+                    if rol_aprendiz and rol_aprendiz in interaction.user.roles and interaction.user.display_name.startswith("🧰 APR"):
+                        await interaction.response.send_message("⚠️ Ya estás identificado.", ephemeral=True)
+                        return
+                except Exception:
+                    pass
                 await interaction.response.send_modal(IdentificacionModal())
 
             btn_ident.callback = ident_callback
@@ -831,28 +895,69 @@ async def dashboard(ctx):
         )
         await ctx.send(embed=embed)
         return
-    datos = [v["tuneos"] for v in historial_tuneos.values()]
+
+    # Config: mostrar top N mecánicos (por defecto 10)
+    TOP_N = 10
+    # Construir lista ordenada por tuneos desc
+    items = sorted(historial_tuneos.items(), key=lambda x: x[1].get('tuneos', 0), reverse=True)
+    top_items = items[:TOP_N]
+
     nombres = []
-    for uid in historial_tuneos.keys():
-        miembro = ctx.guild.get_member(uid)
-        nombres.append(miembro.display_name if miembro else str(uid))
-    plt.figure(figsize=(10, 5))
-    plt.bar(nombres, datos, color='skyblue')
-    plt.xticks(rotation=45, ha='right')
-    plt.title("Tuneos por mecánico")
-    plt.xlabel("Mecánico")
-    plt.ylabel("Tuneos")
+    datos = []
+    for uid, datos_v in top_items:
+        try:
+            uid_int = int(uid)
+        except Exception:
+            uid_int = uid
+        miembro = ctx.guild.get_member(uid_int) if ctx.guild else None
+        if miembro:
+            nombre = miembro.display_name
+        else:
+            nombre = datos_v.get('nombre') or str(uid)
+        nombres.append(nombre)
+        datos.append(datos_v.get('tuneos', 0))
+
+    # Si no hay datos dentro de top_items (caso raro), avisar
+    if not datos:
+        embed = discord.Embed(title="Sin datos", description="No hay tuneos para mostrar.", color=discord.Color.red())
+        await ctx.send(embed=embed)
+        return
+
+    # Gráfico más profesional: barras horizontales, colores, etiquetas
+    plt.style.use('seaborn-darkgrid')
+    fig, ax = plt.subplots(figsize=(10, max(4, 0.6 * len(nombres))))
+    y_pos = range(len(nombres))
+
+    # gradiente de color simple
+    cmap = plt.get_cmap('viridis')
+    colors = [cmap(i / max(1, len(nombres)-1)) for i in range(len(nombres))]
+
+    ax.barh(y_pos, datos, color=colors)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(nombres)
+    ax.invert_yaxis()
+    ax.set_xlabel('Tuneos')
+    ax.set_title('Top mecánicos por tuneos')
+
+    # Annotate counts
+    for i, v in enumerate(datos):
+        ax.text(v + max(1, int(max(datos) * 0.01)), i, str(v), va='center')
+
     plt.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format='png')
+    fig.savefig(buf, format='png', dpi=150)
     buf.seek(0)
+    plt.close(fig)
+
+    # Embed con resumen
+    total_tuneos = sum(v.get('tuneos', 0) for _, v in historial_tuneos.items())
+    top1 = nombres[0] if nombres else 'N/A'
     embed = discord.Embed(
         title="📊 Dashboard de actividad",
-        description="Gráfico de tuneos por mecánico.",
+        description=f"Total de tuneos registrados: **{total_tuneos}**\nTop 1: **{top1}**",
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, file=discord.File(buf, filename="dashboard.png"))
-    plt.close()
 
 # ------------------------------
 # Backup: guardar historial y configuración cada 6 horas
