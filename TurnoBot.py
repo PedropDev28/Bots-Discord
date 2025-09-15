@@ -320,16 +320,17 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
                 if canal_identificacion:
                     try:
                         await canal_identificacion.send(
-                            f"✅ {interaction.user.mention} identificado correctamente como `{nuevo_apodo}`."
+                            f"✅ {interaction.user.mention} identificado correctamente como `{nuevo_apodo}`.", ephemeral=True
                         )
                     except Exception:
                         pass
             except discord.Forbidden:
-                await safe_send_interaction(interaction, "⚠️ No tengo permisos para cambiar tu apodo.")
+                await safe_send_interaction(interaction, "⚠️ No tengo permisos para cambiar tu apodo.", ephemeral=True)
                 if canal_identificacion:
                     try:
                         await canal_identificacion.send(
-                            f"❌ Error al identificar a {interaction.user.mention}: No tengo permisos para cambiar el apodo."
+                            f"❌ Error al identificar a {interaction.user.mention}: No tengo permisos para cambiar el apodo.",
+                            ephemeral=True
                         )
                     except Exception:
                         pass
@@ -380,25 +381,25 @@ class IdentificacionModal(Modal, title="Identificación de mecánico"):
                 pass
 
             # Responder al usuario indicando éxito
-            await safe_send_interaction(interaction, f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}")
+            await safe_send_interaction(interaction, f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}", ephemeral=True)
         except Exception as e:
             # Registrar el error en canal de logs si está configurado
             tb = traceback.format_exc()
             canal_logs = safe_get_channel(CANAL_LOGS)
             if canal_logs:
                 try:
-                    await canal_logs.send(f"❌ Error en IdentificacionModal.on_submit para <@{interaction.user.id}>: {e}\n```{tb[:1900]}```")
+                    await canal_logs.send(f"❌ Error en IdentificacionModal.on_submit para <@{interaction.user.id}>: {e}\n```{tb[:1900]}```", ephemeral=True)
                 except Exception:
                     pass
             # Además guardamos el traceback en un archivo local para diagnóstico
             try:
                 with open(os.path.join(os.path.dirname(__file__), 'ident_errors.log'), 'a') as lf:
-                    lf.write(f"[{datetime.now(zona)}] Error en IdentificacionModal.on_submit para {interaction.user.id}: {e}\n{tb}\n---\n")
+                    lf.write(f"[{datetime.now(zona)}] Error en IdentificacionModal.on_submit para {interaction.user.id}: {e}\n{tb}\n---\n", ephemeral=True)
             except Exception:
                 pass
             # Asegurar que el usuario recibe un mensaje de error amigable
             try:
-                await safe_send_interaction(interaction, "❌ Algo salió mal, inténtalo de nuevo. Si el problema persiste, contacta con un administrador.")
+                await safe_send_interaction(interaction, "❌ Algo salió mal, inténtalo de nuevo. Si el problema persiste, contacta con un administrador.", ephemeral=True)
             except Exception:
                 # si ni siquiera podemos notificar al usuario, solo ignoramos
                 pass
@@ -638,28 +639,28 @@ async def anunciar(ctx, *, args: str):
         try:
             canal_id = int(parts[0])
         except Exception:
-            return await ctx.send("ID de canal inválido.")
+            return await ctx.send("ID de canal inválido.", ephemeral=True)
         if len(parts) < 3:
-            return await ctx.send("Si especificas canal_id, usa: canal_id | Titulo | Descripción")
+            return await ctx.send("Si especificas canal_id, usa: canal_id | Titulo | Descripción", ephemeral=True)
         title = parts[1]
         description = parts[2]
         canal = safe_get_channel(canal_id)
         if canal is None:
-            return await ctx.send("No encuentro ese canal. Asegúrate de que el ID está correcto y que el bot puede ver el canal.")
+            return await ctx.send("No encuentro ese canal. Asegúrate de que el ID está correcto y que el bot puede ver el canal.", ephemeral=True)
     else:
         # usar canal por defecto
         canal = safe_get_channel(CANAL_ANUNCIOS)
         title = parts[0]
         description = parts[1] if len(parts) > 1 else ""
         if canal is None:
-            return await ctx.send("Canal de anuncios por defecto no configurado en el bot.")
+            return await ctx.send("Canal de anuncios por defecto no configurado en el bot.", ephemeral=True)
 
     embed = discord.Embed(title=f"📢 {title}", description=description, color=discord.Color.orange())
     try:
         await canal.send(embed=embed)
         await ctx.send("✅ Anuncio enviado.", delete_after=5)
     except Exception:
-        await ctx.send("❌ Error al enviar el anuncio. Revisa permisos del bot y del canal.")
+        await ctx.send("❌ Error al enviar el anuncio. Revisa permisos del bot y del canal.", ephemeral=True)
 
 # ------------------------------
 # Función que construye y envía las vistas con botones (identificación, turnos, tuneos, historial)
@@ -679,7 +680,7 @@ async def construir_y_enviar_vistas():
                 try:
                     rol_aprendiz = interaction.guild.get_role(ROLE_APRENDIZ) if interaction.guild else None
                     if rol_aprendiz and rol_aprendiz in interaction.user.roles and interaction.user.display_name.startswith("🧰 APR"):
-                        await safe_send_interaction(interaction, "⚠️ Ya estás identificado.")
+                        await safe_send_interaction(interaction, "⚠️ Ya estás identificado.", ephemeral=True)
                         return
                 except Exception:
                     pass
@@ -689,7 +690,7 @@ async def construir_y_enviar_vistas():
                     await interaction.response.send_modal(IdentificacionModal())
                 except Exception:
                     # Fallback si el modal falla por alguna razón
-                    await safe_send_interaction(interaction, "❌ No pude abrir el formulario. Intenta de nuevo más tarde o contacta con un administrador.")
+                    await safe_send_interaction(interaction, "❌ No pude abrir el formulario. Intenta de nuevo más tarde o contacta con un administrador.", ephemeral=True)
 
             btn_ident.callback = ident_callback
             view_ident.add_item(btn_ident)
@@ -1027,7 +1028,7 @@ async def backup_task():
     except Exception as e:
         canal_logs = safe_get_channel(CANAL_LOGS)
         if canal_logs:
-            await canal_logs.send(f"❌ Error al guardar backup: {e}")
+            await canal_logs.send(f"❌ Error al guardar backup: {e}", ephemeral=True)
 
 # ------------------------------
 # Comandos para guardar y cargar datos manualmente
@@ -1054,14 +1055,14 @@ async def guardar(ctx):
             description="Los datos se han guardado correctamente.",
             color=discord.Color.green()
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
     except Exception as e:
         embed = discord.Embed(
             title="❌ Error al guardar",
             description=str(e),
             color=discord.Color.red()
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
 @bot.command()
 @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
@@ -1079,14 +1080,14 @@ async def cargar(ctx):
             description="Los datos se han restaurado correctamente.",
             color=discord.Color.green()
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
     except Exception as e:
         embed = discord.Embed(
             title="❌ Error al cargar",
             description=str(e),
             color=discord.Color.red()
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
 # ------------------------------
 # Comando de identificación manual (ejemplo simple, sin botones)
@@ -1101,7 +1102,7 @@ async def identificar(ctx):
             description="Ya tienes el rol de aprendiz y el apodo configurado.",
             color=discord.Color.green()
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
         return
     # Aquí iría el resto de la lógica de identificación, si es necesario
 
