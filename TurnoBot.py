@@ -671,15 +671,137 @@ async def construir_y_enviar_vistas():
             btn_ident = Button(label="📝 Identifícate como mecánico", style=discord.ButtonStyle.green)
 
             async def ident_callback(interaction: discord.Interaction):
-                # Comprobar si ya está identificado para evitar abrir modal innecesario
+                # Comprobar si ya está identificado para evitar proceso innecesario
                 try:
                     rol_aprendiz = interaction.guild.get_role(ROLE_APRENDIZ) if interaction.guild else None
                     if rol_aprendiz and rol_aprendiz in interaction.user.roles and interaction.user.display_name.startswith("🧰 APR"):
-                        await interaction.response.send_message("⚠️ Ya estás identificado.", ephemeral=True)
+                        await safe_send_interaction(interaction, "⚠️ Ya estás identificado.")
                         return
                 except Exception:
                     pass
-                await interaction.response.send_modal(IdentificacionModal())
+
+                # Crear (o usar existente) private thread en el canal de identificación para interactuar con el usuario
+                canal = interaction.guild.get_channel(CANAL_IDENTIFICACION) if interaction.guild else None
+                if canal is None:
+                    await safe_send_interaction(interaction, "⚠️ El canal de identificación no está configurado.")
+                    return
+
+                # Crear un hilo privado con nombre único por usuario
+                thread_name = f"ident-{interaction.user.id}"
+                thread = None
+                try:
+                    # buscar thread existente con ese nombre
+                    async for th in canal.threads:
+                        if th.name == thread_name:
+                            thread = th
+                            break
+                    if thread is None:
+                        thread = await canal.create_thread(name=thread_name, type=discord.ChannelType.private_thread, invitable=False)
+                        await thread.edit(invitable=False)
+                except Exception:
+                    # si no podemos crear thread, avisar y fallback a mensajes ephemerally
+                    await safe_send_interaction(interaction, "❌ No puedo crear un thread privado para la identificación. Contacta con un administrador.")
+                    return
+
+                # Invitar al usuario al thread si es necesario
+                try:
+                    await thread.add_user(interaction.user)
+                except Exception:
+                    pass
+
+                # Enviar las preguntas dentro del thread, visibles solo al user y staff del thread
+                try:
+                    q1 = await thread.send(f"{interaction.user.mention} — Por favor responde aquí: **NOMBRE IC:**")
+                except Exception:
+                    await safe_send_interaction(interaction, "❌ Error al enviar la pregunta. Intenta de nuevo más tarde.")
+                    return
+
+                def check(m: discord.Message):
+                    return m.author.id == interaction.user.id and m.channel.id == thread.id
+
+                try:
+                    msg_nombre = await bot.wait_for('message', check=check, timeout=120.0)
+                except Exception:
+                    try:
+                        await thread.send("⏱️ Tiempo agotado. Si quieres identificarte, pulsa el botón de nuevo.")
+                    except Exception:
+                        pass
+                    await safe_send_interaction(interaction, "⏱️ Tiempo agotado para la identificación. Intenta de nuevo.")
+                    return
+
+                try:
+                    q2 = await thread.send(f"{interaction.user.mention} — Ahora responde: **ID IC:**")
+                except Exception:
+                    await safe_send_interaction(interaction, "❌ Error al enviar la segunda pregunta. Intenta de nuevo.")
+                    return
+
+                try:
+                    msg_idic = await bot.wait_for('message', check=check, timeout=120.0)
+                except Exception:
+                    try:
+                        await thread.send("⏱️ Tiempo agotado. Si quieres identificarte, pulsa el botón de nuevo.")
+                    except Exception:
+                        pass
+                    await safe_send_interaction(interaction, "⏱️ Tiempo agotado para la identificación. Intenta de nuevo.")
+                    return
+
+                # Procesar respuestas
+                nombre_ic = msg_nombre.content.strip()
+                id_ic = msg_idic.content.strip()
+                nuevo_apodo = f"🧰 APR | {nombre_ic} | {id_ic}"
+
+                # Intentar aplicar apodo y roles
+                try:
+                    await interaction.user.edit(nick=nuevo_apodo)
+                except Exception:
+                    # notificar en thread si no se pudo cambiar el apodo
+                    try:
+                        await thread.send(f"⚠️ No pude cambiar tu apodo a `{nuevo_apodo}`. Revisa permisos del bot.")
+                    except Exception:
+                        pass
+
+                try:
+                    rol1 = interaction.guild.get_role(ROLE_APRENDIZ)
+                    rol2 = interaction.guild.get_role(ROLE_OVERSPEED)
+                    if rol1:
+                        await interaction.user.add_roles(rol1)
+                    if rol2:
+                        await interaction.user.add_roles(rol2)
+                except Exception:
+                    try:
+                        await thread.send("⚠️ No pude asignarte uno o más roles. Contacta con un administrador.")
+                    except Exception:
+                        pass
+
+                # Registrar en canal de resultado y thread
+                try:
+                    canal_res = interaction.guild.get_channel(CANAL_RESULTADO_IDENTIFICACION)
+                    if canal_res:
+                        await canal_res.send(f"✅ {interaction.user.mention} identificado correctamente como `{nuevo_apodo}`.")
+                except Exception:
+                    pass
+
+                try:
+                    await thread.send(f"✅ Identificación completada. Tu apodo ahora es: `{nuevo_apodo}`")
+                except Exception:
+                    pass
+
+                # Enviar mensaje que solo vea el usuario (ephemeral-like) usando safe_send_interaction
+                await safe_send_interaction(interaction, f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}")
+
+                # añadir reacción de confirmación y opcionalmente cerrar el thread
+                try:
+                    await msg_nombre.add_reaction('\u2705')
+                except Exception:
+                    pass
+                # Archivar / cerrar el thread para que no queden abiertos
+                try:
+                    await thread.edit(archived=True)
+                except Exception:
+                    try:
+                        await thread.send("⚠️ No pude archivar el thread automáticamente.")
+                    except Exception:
+                        pass
 
             btn_ident.callback = ident_callback
             view_ident.add_item(btn_ident)
@@ -953,8 +1075,18 @@ async def dashboard(ctx):
         await ctx.send(embed=embed)
         return
 
-    # Gráfico más profesional: barras horizontales, colores, etiquetas
-    plt.style.use('seaborn-darkgrid')
+    # Gráfico más profesional: si seaborn está disponible lo usamos, si no fallback a ggplot
+    try:
+        import seaborn as sns
+        sns.set_theme(style='darkgrid')
+    except Exception:
+        try:
+            plt.style.use('ggplot')
+        except Exception:
+            try:
+                plt.style.use('default')
+            except Exception:
+                pass
     fig, ax = plt.subplots(figsize=(10, max(4, 0.6 * len(nombres))))
     y_pos = range(len(nombres))
 
