@@ -73,13 +73,3 @@ Te notificaremos sobre cambios importantes en esta política a través de:
 Anuncios en el servidor de Discord
 Actualizaciones en este documento
 Mensajes directos si es necesario
-
-9. Cumplimiento Legal
-Podemos divulgar información si:
-
-Es requerido por ley
-Es necesario para proteger derechos o seguridad
-Se requiere para investigar violaciones de términos
-
-10. Transferencia Internacional
-Los datos pueden procesarse en servidores ubicados en diferentes países, sujetos a las leyes de privacidad aplicables.
