@@ -1,1 +1,1 @@
-worker: python TurnoBot.py
+worker: python main.py
