@@ -23,6 +23,7 @@ from utils.helpers import (
     tuneos_activos,
     historial_tuneos,
 )
+from handlers.identification import handle_identification_channel
 
 
 async def setup_views(bot: discord.Client):
@@ -34,183 +35,30 @@ async def setup_views(bot: discord.Client):
             btn_ident = Button(label="📝 Identifícate como mecánico", style=discord.ButtonStyle.green)
 
             async def ident_callback(interaction: discord.Interaction):
-                # Avisa ephemerally y arranca conversación por DM
+                # Usar la nueva función de identificación en canal
+                bot = interaction.client
+                user = interaction.user
+                guild = interaction.guild
+                canal_ident = interaction.channel
+
                 try:
                     await interaction.response.defer(ephemeral=True)
                 except Exception:
                     pass
-                bot = interaction.client
-                user = interaction.user
-                guild = interaction.guild
 
-                # Intentamos abrir DM
-                try:
-                    dm = await user.create_dm()
-                    await dm.send(
-                        "Hola! Vamos a completar tu identificación como mecánico.\n"
-                        "Contesta a las siguientes preguntas. Puedes escribir 'cancelar' en cualquier momento para abortar."
-                    )
-                except Exception:
-                    # No se pudo enviar DM
-                    await interaction.followup.send(
-                        "❌ No pude enviarte un mensaje directo. Activa tus MD e inténtalo de nuevo.",
-                        ephemeral=True,
-                    )
-                    # Opcional: log al staff
-                    canal_staff_local = safe_get_channel(bot, CANAL_STAFF)
-                    if canal_staff_local:
-                        try:
-                            await canal_staff_local.send(
-                                f"❌ No pude iniciar DM con {user.mention} para identificación. Tiene los MD desactivados."
-                            )
-                        except Exception:
-                            pass
-                    return
-
-                def check_author_dm(m: discord.Message):
-                    return m.author.id == user.id and m.channel.id == dm.id
-
-                # Pregunta 1: Nombre IC
-                try:
-                    await dm.send("¿Cuál es tu Nombre IC? (máx 32 caracteres)")
-                    nombre_msg = await bot.wait_for("message", timeout=120, check=check_author_dm)
-                    nombre = nombre_msg.content.strip()
-                    if nombre.lower() == "cancelar":
-                        await dm.send("Operación cancelada.")
-                        await interaction.followup.send("Operación cancelada.", ephemeral=True)
-                        return
-                    if len(nombre) == 0 or len(nombre) > 32:
-                        await dm.send("❌ Nombre inválido. Vuelve a intentarlo con el botón del canal.")
-                        await interaction.followup.send("❌ Nombre inválido.", ephemeral=True)
-                        return
-                except Exception:
-                    await dm.send("⏰ Tiempo agotado. Vuelve a intentarlo con el botón del canal.")
-                    await interaction.followup.send("⏰ Tiempo agotado.", ephemeral=True)
-                    return
-
-                # Pregunta 2: ID IC
-                try:
-                    await dm.send("¿Cuál es tu ID IC? (máx 10 caracteres, sólo números)")
-                    id_msg = await bot.wait_for("message", timeout=120, check=check_author_dm)
-                    id_ic = id_msg.content.strip()
-                    if id_ic.lower() == "cancelar":
-                        await dm.send("Operación cancelada.")
-                        await interaction.followup.send("Operación cancelada.", ephemeral=True)
-                        return
-                    if len(id_ic) == 0 or len(id_ic) > 10 or not id_ic.isdigit():
-                        await dm.send("❌ ID inválido. Vuelve a intentarlo con el botón del canal.")
-                        await interaction.followup.send("❌ ID inválido.", ephemeral=True)
-                        return
-                except Exception:
-                    await dm.send("⏰ Tiempo agotado. Vuelve a intentarlo con el botón del canal.")
-                    await interaction.followup.send("⏰ Tiempo agotado.", ephemeral=True)
-                    return
-
-                # Confirmación obtenida, procedemos a aplicar cambios
-                nuevo_apodo = f"🧰 APR | {nombre} | {id_ic}"
-                canal_resultado = guild.get_channel(CANAL_RESULTADO_IDENTIFICACION) if guild else None
-                try:
-                    await user.edit(nick=nuevo_apodo)
-                    if canal_resultado:
-                        try:
-                            await canal_resultado.send(
-                                f"✅ {user.mention} identificado correctamente como `{nuevo_apodo}`."
-                            )
-                        except Exception:
-                            pass
-                except discord.Forbidden:
-                    await dm.send("⚠️ No tengo permisos para cambiar tu apodo. Contacta con un administrador.")
-                    if canal_resultado:
-                        try:
-                            await canal_resultado.send(
-                                f"❌ Error al identificar a {user.mention}: No tengo permisos para cambiar el apodo."
-                            )
-                        except Exception:
-                            pass
-                    await interaction.followup.send("❌ No tengo permisos para cambiar tu apodo.", ephemeral=True)
-                    return
-                except Exception:
-                    # Error genérico
-                    if canal_resultado:
-                        try:
-                            await canal_resultado.send(
-                                f"❌ Error no esperado al identificar a {user.mention} (cambio de apodo)."
-                            )
-                        except Exception:
-                            pass
-                    await interaction.followup.send("❌ Ocurrió un error. Intenta más tarde.", ephemeral=True)
-                    return
-
-                # Añadir roles
-                try:
-                    rol_aprendiz = guild.get_role(ROLE_APRENDIZ) if guild else None
-                    rol_overspeed = guild.get_role(ROLE_OVERSPEED) if guild else None
-                    if rol_aprendiz:
-                        try:
-                            await user.add_roles(rol_aprendiz)
-                        except Exception:
-                            pass
-                    if rol_overspeed:
-                        try:
-                            await user.add_roles(rol_overspeed)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-                # Registrar en hilo del canal de identificación (opcional)
-                try:
-                    canal_ident = guild.get_channel(CANAL_IDENTIFICACION)
-                    thread_name = "Identificaciones Mecánicos"
-                    thread = None
-                    if canal_ident:
-                        for th in canal_ident.threads:
-                            if th.name == thread_name:
-                                thread = th
-                                break
-                        if thread is None:
-                            try:
-                                thread = await canal_ident.create_thread(
-                                    name=thread_name,
-                                    type=discord.ChannelType.private_thread,
-                                    invitable=False,
-                                )
-                                await thread.edit(invitable=False)
-                            except Exception:
-                                thread = None
-                        if thread:
-                            try:
-                                msg = await thread.send(f"{user.mention} identificado como: **{nuevo_apodo}**")
-                                await msg.add_reaction("✅")
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-
-                # Limpiar canal de identificación y dejar sólo el botón (mensaje pineado)
-                try:
-                    canal_ident = guild.get_channel(CANAL_IDENTIFICACION)
-                    if canal_ident:
-                        async for m in canal_ident.history(limit=100):
-                            if not m.pinned:
-                                try:
-                                    await m.delete()
-                                except Exception:
-                                    pass
-                except Exception:
-                    pass
-
-                try:
-                    await dm.send(f"✅ Identificación completada. Apodo cambiado a: {nuevo_apodo}")
-                except Exception:
-                    pass
-                await interaction.followup.send("✅ Identificación completada.", ephemeral=True)
+                # Llamar a la función de identificación en canal
+                success, message = await handle_identification_channel(bot, user, guild, canal_ident)
+                
+                if success:
+                    await interaction.followup.send("✅ Identificación completada.", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
             btn_ident.callback = ident_callback
             view_ident.add_item(btn_ident)
             msg = await canal_identificacion.send(
                 "Haz clic en el botón para identificarte y rellenar el formulario de mecánico.\n"
-                "Las respuestas y confirmaciones serán privadas por MD.",
+                "Las preguntas aparecerán aquí mismo en el canal.",
                 view=view_ident,
             )
             # Intentar pinear el mensaje del botón, para preservarlo en la limpieza
@@ -343,7 +191,7 @@ async def setup_views(bot: discord.Client):
             pass
 
     # Historial total al canal de staff
-    if canal_staff and canal_turnos:
+    if canal_staff:
         try:
             view_historial = View(timeout=None)
             button_historial = Button(label="📋 Historial Total", style=discord.ButtonStyle.gray)
@@ -402,7 +250,7 @@ async def setup_views(bot: discord.Client):
 
             button_historial.callback = historial_callback
             view_historial.add_item(button_historial)
-            await canal_turnos.send(
+            await canal_staff.send(
                 "Pulsa el botón para ver el historial completo de tuneos (solo roles autorizados):",
                 view=view_historial,
             )
