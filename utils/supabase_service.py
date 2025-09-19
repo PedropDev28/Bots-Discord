@@ -1,6 +1,8 @@
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import os
+
+
 import json
 import logging
 from supabase import create_client, Client
@@ -40,6 +42,8 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Supabase connection test failed: {e}")
             return False
+
+
     
     async def create_or_update_user(self, user_id: str, nombre: str, rol: str, server_id: str) -> bool:
         """Crea o actualiza un usuario"""
@@ -163,6 +167,20 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Error during migration: {e}")
             return False
+
+    async def get_all_users(self, server_id: str):
+        """Devuelve todos los usuarios de un server con sus tuneos_count"""
+        try:
+            client = self.get_client()
+            resp = client.table("users").select(
+                "user_id, nombre, rol, tuneos_count"
+            ).eq("server_id", server_id).execute()
+            if resp.data:
+                return resp.data
+            return []
+        except Exception as e:
+            logger.error(f"Error en get_all_users: {e}")
+            return []
 
 # Instancia singleton
 supabase_service = SupabaseService()

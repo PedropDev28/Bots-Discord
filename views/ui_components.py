@@ -316,37 +316,28 @@ async def setup_views(bot: discord.Client):
                 if not any(role.id in ROLES_HISTORIAL_TOTAL for role in interaction.user.roles):
                     await interaction.followup.send("❌ No tienes permiso para ver el historial completo.", ephemeral=True)
                     return
-                if not historial_tuneos:
-                    await interaction.followup.send("❌ No hay tuneos registrados.", ephemeral=True)
-                    return
 
-                canal_staff_local = safe_get_channel(bot, CANAL_STAFF)
-                if canal_staff_local is None:
-                    await interaction.followup.send(
-                        "⚠️ El canal de staff no está configurado. Contacta con el administrador.",
-                        ephemeral=True,
-                    )
+                server_id = str(interaction.guild.id) if interaction.guild else ""
+                usuarios = await supabase_service.get_all_users(server_id)
+
+                if not usuarios:
+                    await interaction.followup.send("❌ No hay tuneos registrados en Supabase.", ephemeral=True)
                     return
 
                 lines = []
-                for uid, datos in historial_tuneos.items():
-                    try:
-                        uid_int = int(uid)
-                    except Exception:
-                        uid_int = uid
-                    miembro = interaction.guild.get_member(uid_int) if interaction.guild else None
+                for user in usuarios:
+                    user_id = user.get("user_id")
+                    nombre = user.get("nombre", "Desconocido")
+                    rol = user.get("rol", "")
+                    tuneos = user.get("tuneos_count", 0)
+
+                    # Si el miembro está en el server, usar su display_name actualizado
+                    miembro = interaction.guild.get_member(int(user_id)) if interaction.guild else None
                     if miembro:
                         apodo = miembro.display_name
                     else:
-                        rol = datos.get("rol", "")
-                        nombre = datos.get("nombre", "")
-                        if rol and nombre:
-                            apodo = f"{rol} | {nombre}"
-                        elif nombre:
-                            apodo = nombre
-                        else:
-                            apodo = str(uid)
-                    tuneos = datos.get("tuneos", 0)
+                        apodo = f"{rol} | {nombre}" if rol else nombre
+
                     lines.append(f"{apodo} — {tuneos} tuneos")
 
                 embed_hist = discord.Embed(
@@ -354,14 +345,13 @@ async def setup_views(bot: discord.Client):
                     description="\n".join(lines),
                     color=discord.Color.blue(),
                 )
-                try:
+
+                canal_staff_local = safe_get_channel(interaction.client, CANAL_STAFF)
+                if canal_staff_local:
                     await canal_staff_local.send(embed=embed_hist)
                     await interaction.followup.send("✅ Historial enviado al canal de staff.", ephemeral=True)
-                except Exception:
-                    await interaction.followup.send(
-                        "❌ No pude enviar el historial al canal de staff (revisa permisos).",
-                        ephemeral=True,
-                    )
+                else:
+                    await interaction.followup.send("⚠️ El canal de staff no está configurado.", ephemeral=True)
 
             button_historial.callback = historial_callback
             view_historial.add_item(button_historial)
