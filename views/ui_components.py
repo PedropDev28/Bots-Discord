@@ -1,6 +1,7 @@
 import discord
 from discord.ui import Button, View
 from datetime import datetime
+import logging
 
 from config.settings import ZONA
 from config.constants import (
@@ -24,6 +25,11 @@ from utils.helpers import (
     historial_tuneos,
 )
 from handlers.identification import handle_identification_channel
+
+# Añadido: supabase service y logger
+from utils.supabase_service import supabase_service
+
+logger = logging.getLogger(__name__)
 
 
 async def setup_views(bot: discord.Client):
@@ -107,6 +113,21 @@ async def setup_views(bot: discord.Client):
                     historial_tuneos[uid]["detalle"].append(
                         (datetime.now(ZONA), dinero_tuneo, "Finalizado auto al cerrar turno")
                     )
+                    # Guardar/actualizar en Supabase: crear usuario si no existe y aumentar contador
+                    try:
+                        server_id = str(interaction.guild.id) if interaction.guild else ""
+                        nombre = historial_tuneos[uid].get("nombre") or interaction.user.display_name
+                        rol = historial_tuneos[uid].get("rol", "")
+                        await supabase_service.create_or_update_user(
+                            user_id=str(uid),
+                            nombre=nombre,
+                            rol=rol,
+                            server_id=server_id
+                        )
+                        await supabase_service.increment_tuneo_count(str(uid), server_id)
+                    except Exception:
+                        logger.exception("Error actualizando Supabase al finalizar turno con tuneo pendiente")
+
                 datos_turno = turnos_activos.pop(uid)
                 total_dinero = datos_turno["dinero"]
                 inicio = datos_turno["inicio"]
@@ -167,6 +188,22 @@ async def setup_views(bot: discord.Client):
                 historial_tuneos[uid]["dinero_total"] += dinero_tuneo
                 historial_tuneos[uid]["tuneos"] += 1
                 historial_tuneos[uid]["detalle"].append((datetime.now(ZONA), dinero_tuneo, "Tuneo completado"))
+
+                # Guardar/actualizar en Supabase: crear usuario si no existe y aumentar contador
+                try:
+                    server_id = str(interaction.guild.id) if interaction.guild else ""
+                    nombre = historial_tuneos[uid].get("nombre") or interaction.user.display_name
+                    rol = historial_tuneos[uid].get("rol", "")
+                    await supabase_service.create_or_update_user(
+                        user_id=str(uid),
+                        nombre=nombre,
+                        rol=rol,
+                        server_id=server_id
+                    )
+                    await supabase_service.increment_tuneo_count(str(uid), server_id)
+                except Exception:
+                    logger.exception("Error actualizando Supabase al finalizar tuneo")
+
                 try:
                     if historial_tuneos[uid]["tuneos"] in [50, 100, 200]:
                         canal = safe_get_channel(bot, CANAL_RANKING)
