@@ -43,6 +43,8 @@ def register_commands(bot: commands.Bot):
                     f"`{prefix}dashboard` — Muestra el top de actividad (gráfico).",
                     f"`{prefix}guardar` — Guarda el backup actual.",
                     f"`{prefix}cargar` — Carga el backup desde archivo.",
+                    f"`{prefix}test_supabase` — Prueba la conexión con Supabase. (admin)",
+                    f"`{prefix}migrate_backup` — Migra backup.json a Supabase. (admin)"
                 ])
             ))
 
