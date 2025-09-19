@@ -43,6 +43,32 @@ class SupabaseService:
             logger.error(f"Supabase connection test failed: {e}")
             return False
 
+    async def load_historial(self, server_id: str) -> dict:
+        """
+        Carga todos los usuarios de un server desde Supabase
+        y devuelve un diccionario tipo historial_tuneos:
+        {user_id: {"nombre": ..., "rol": ..., "tuneos": ...}}
+        """
+        try:
+            usuarios = await self.get_all_users(server_id)
+
+            historial = {}
+            for user in usuarios:
+                try:
+                    uid = int(user["user_id"])
+                except ValueError:
+                    uid = user["user_id"]
+
+                historial[uid] = {
+                    "nombre": user.get("nombre", ""),
+                    "rol": user.get("rol", ""),
+                    "tuneos": user.get("tuneos_count", 0)
+                }
+            return historial
+
+        except Exception as e:
+            print(f"❌ Error cargando historial desde Supabase: {e}")
+            return {}
 
     
     async def create_or_update_user(self, user_id: str, nombre: str, rol: str, server_id: str) -> bool:

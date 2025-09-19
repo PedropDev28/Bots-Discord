@@ -32,6 +32,8 @@ def create_bot() -> commands.Bot:
     async def on_ready():
         logger.info(f"Bot conectado como {bot.user}")
 
+        
+
         # Probar conexión con Supabase
         try:
             connection_ok = await supabase_service.test_connection()
@@ -47,6 +49,19 @@ def create_bot() -> commands.Bot:
             start_tasks(bot)
         except Exception:
             logger.exception("Error starting periodic tasks")
+            
+        # Cargar historial inicial desde Supabase
+        try:
+            global historial_tuneos
+            historial_tuneos = {}
+            for guild in bot.guilds:
+                server_id = str(guild.id)
+                data = await supabase_service.load_historial(server_id)
+                historial_tuneos.update(data)
+                logger.info(f"✅ Historial cargado desde Supabase para servidor {guild.name}")
+        except Exception as e:
+            logger.exception("❌ Error cargando historial inicial desde Supabase: %s", e)
+
 
         # Enviar anuncio inicial
         try:

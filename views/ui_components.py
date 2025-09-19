@@ -42,7 +42,7 @@ def _extract_legacy_id(display_name: str) -> str | None:
 def _extract_role(display_name: str) -> str | None:
     """
     Extrae el rol de un apodo tipo '🧰 APR | Mario Ramos | 17343'
-    Devuelve 'APR' en este ejemplo.
+    Devuelve '🧰 APR' en este ejemplo (emoji incluido).
     """
     if not display_name:
         return None
@@ -52,15 +52,8 @@ def _extract_role(display_name: str) -> str | None:
         return None
 
     first = parts[0].strip()
-    first_clean = re.sub(r"[^\w\s]", "", first).strip()
 
-    # Roles válidos (ajústalos a tu servidor)
-    valid_roles = ["REC", "APR", "SUBG", "SUBGER", "GER", "GER GEN", "PROP"]
-    for role in valid_roles:
-        if role in first_clean.upper():
-            return role
-
-    return None
+    return first if first else None
 
 
 async def setup_views(bot: discord.Client):
