@@ -59,6 +59,13 @@ CANAL_RESULTADO_IDENTIFICACION = 1417250457163665418
 CANAL_STAFF = 1415964136550043689
 CANAL_LOGS = 1417250932386959441
 
+# ID del rol que se usa para marcar "promocionar" (mejor usar ID que nombre)
+# Pon aquí el ID real del rol en tu servidor, por ejemplo: 123456789012345678
+PROMO_ROLE_ID: int = 1418501466716508223
+
+# Canal donde se publican notificaciones de promo/demotion
+PROMO_NOTIFY_CHANNEL: int = 1385301437977854046
+
 # Estados rotativos del bot
 ESTADOS = itertools.cycle([
     discord.Game("Gestionando turnos ⏱️"),

@@ -10,7 +10,7 @@ from config.constants import (
     ROL_PROPIETARIO,
     CANAL_LOGS,
 )
-from utils.helpers import turnos_activos, tuneos_activos, safe_get_channel
+from utils.helpers import turnos_activos, tuneos_activos, safe_get_channel, normalize_user_identity
 from utils.database import save_backup, load_backup
 from utils.supabase_service import supabase_service
 
@@ -367,9 +367,10 @@ def register_commands(bot: commands.Bot):
             await ctx.send(embed=embed)
             # asegurar existencia en supabase
             try:
+                target_user_id, clean_name = normalize_user_identity(ctx.author.display_name, ctx.author.id)
                 await supabase_service.create_or_update_user(
-                    user_id=str(ctx.author.id),
-                    nombre=ctx.author.display_name,
+                    user_id=str(target_user_id),
+                    nombre=clean_name,
                     rol="🧰 APR",
                     server_id=str(ctx.guild.id)
                 )

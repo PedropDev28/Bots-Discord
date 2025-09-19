@@ -1,5 +1,6 @@
 import discord
-from typing import Optional
+import re
+from typing import Tuple, Optional
 from config.constants import CANAL_ANUNCIOS
 
 # Estado runtime (in-memory)
@@ -103,3 +104,46 @@ async def enviar_anuncio(bot: discord.Client):
             )
         except Exception:
             pass
+
+
+def extract_legacy_id(display_name: str) -> Optional[str]:
+    """Extrae un posible ID legacy al final del apodo '... | 11895'"""
+    if not display_name:
+        return None
+    m = re.search(r'\b(\d{3,12})\s*$', display_name)
+    return m.group(1) if m else None
+
+
+def clean_display_name(display_name: str) -> str:
+    """Limpia el display_name quitando prefijos/apodos y el ID final si existe.
+    Ejemplos:
+      '🏢PROP | Gencho | 11895' -> 'Gencho'
+      '🧰 APR | Nombre | 123' -> 'Nombre'
+      'Usuario' -> 'Usuario'
+    """
+    if not display_name:
+        return ""
+    parts = [p.strip() for p in display_name.split('|')]
+    # si último fragmento es numérico, eliminarlo
+    if parts and parts[-1].isdigit():
+        parts = parts[:-1]
+    # si quedan 2+ partes, el nombre suele estar en la segunda parte
+    if len(parts) >= 2:
+        return parts[1]
+    # si sólo hay una parte, devolverla tal cual (sin emojis al inicio)
+    return parts[0].strip()
+
+
+def normalize_user_identity(display_name: str, discord_id: int) -> Tuple[str, str]:
+    """
+    Retorna (target_user_id, clean_name)
+      - target_user_id: legacy id si existe en el display_name, sino discord_id as str
+      - clean_name: nombre limpio para guardar en la BD
+    """
+    legacy = extract_legacy_id(display_name)
+    target = legacy or str(discord_id)
+    clean = clean_display_name(display_name)
+    # si clean vació, usar discord_id como fallback
+    if not clean:
+        clean = str(discord_id)
+    return target, clean

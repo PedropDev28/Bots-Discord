@@ -14,24 +14,20 @@ from config.constants import (
     ROLES_TUNEO,
     ROLES_HISTORIAL_TOTAL,
     PRECIOS_TUNEOS,
-    ROLE_APRENDIZ,
-    ROLE_OVERSPEED,
-    CANAL_RESULTADO_IDENTIFICACION,
+    PROMO_ROLE_ID,
+    PROMO_NOTIFY_CHANNEL,
 )
 from utils.helpers import (
     safe_get_channel,
-    safe_send_interaction,
     turnos_activos,
     tuneos_activos,
     historial_tuneos,
+    normalize_user_identity
 )
 from handlers.identification import handle_identification_channel
 
 # Añadido: supabase service y logger
 from utils.supabase_service import supabase_service
-
-PROMO_ROLE_NAME = "promocionar"
-PROMO_NOTIFY_CHANNEL = 1385301437977854046
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +124,9 @@ async def setup_views(bot: discord.Client):
                     # Guardar/actualizar en Supabase: crear usuario si no existe y aumentar contador
                     try:
                         server_id = str(interaction.guild.id) if interaction.guild else ""
-                        nombre = historial_tuneos[uid].get("nombre") or interaction.user.display_name
                         rol = historial_tuneos[uid].get("rol", "")
-                        legacy = _extract_legacy_id(interaction.user.display_name)
-                        target_user_id = legacy or str(uid)
+                        target_user_id, clean_name = normalize_user_identity(interaction.user.display_name, uid)
+                        nombre = historial_tuneos[uid].get("nombre") or clean_name
                         await supabase_service.create_or_update_user(
                             user_id=str(target_user_id),
                             nombre=nombre,
@@ -143,9 +138,12 @@ async def setup_views(bot: discord.Client):
                         try:
                             member = interaction.guild.get_member(uid) if interaction.guild else None
                             promo_role = None
-                            if interaction.guild:
+                            # Preferir role por ID (más fiable). Si PROMO_ROLE_ID no está configurado (>0), hacer fallback por nombre.
+                            if interaction.guild and PROMO_ROLE_ID:
+                                promo_role = interaction.guild.get_role(PROMO_ROLE_ID)
+                            elif interaction.guild:
                                 for r in interaction.guild.roles:
-                                    if r.name.lower() == PROMO_ROLE_NAME.lower():
+                                    if r.name.lower() == "promocionar":
                                         promo_role = r
                                         break
                             notify_channel = interaction.client.get_channel(PROMO_NOTIFY_CHANNEL)
@@ -160,7 +158,7 @@ async def setup_views(bot: discord.Client):
                                     if notify_channel:
                                         await notify_channel.send(f"🔼 Promoción: {interaction.user.mention} ha alcanzado {new} tuneos. Revisar para ascenso.")
                                 elif prev > 20 and new <= 20:
-                                    # demote (unlikely on increment, but for completeness)
+                                    # demote
                                     if member and promo_role:
                                         try:
                                             await member.remove_roles(promo_role, reason="Tuneos reducidos <=20 (auto)")
@@ -237,10 +235,9 @@ async def setup_views(bot: discord.Client):
                 # Guardar/actualizar en Supabase: crear usuario si no existe y aumentar contador
                 try:
                     server_id = str(interaction.guild.id) if interaction.guild else ""
-                    nombre = historial_tuneos[uid].get("nombre") or interaction.user.display_name
                     rol = historial_tuneos[uid].get("rol", "")
-                    legacy = _extract_legacy_id(interaction.user.display_name)
-                    target_user_id = legacy or str(uid)
+                    target_user_id, clean_name = normalize_user_identity(interaction.user.display_name, uid)
+                    nombre = historial_tuneos[uid].get("nombre") or clean_name
                     await supabase_service.create_or_update_user(
                         user_id=str(target_user_id),
                         nombre=nombre,
@@ -253,9 +250,12 @@ async def setup_views(bot: discord.Client):
                     try:
                         member = interaction.guild.get_member(uid) if interaction.guild else None
                         promo_role = None
-                        if interaction.guild:
+                        # Preferir role por ID (más fiable). Si PROMO_ROLE_ID no está configurado (>0), hacer fallback por nombre.
+                        if interaction.guild and PROMO_ROLE_ID:
+                            promo_role = interaction.guild.get_role(PROMO_ROLE_ID)
+                        elif interaction.guild:
                             for r in interaction.guild.roles:
-                                if r.name.lower() == PROMO_ROLE_NAME.lower():
+                                if r.name.lower() == "promocionar":
                                     promo_role = r
                                     break
                         notify_channel = interaction.client.get_channel(PROMO_NOTIFY_CHANNEL)
