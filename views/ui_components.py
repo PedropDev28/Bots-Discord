@@ -39,6 +39,29 @@ def _extract_legacy_id(display_name: str) -> str | None:
     m = re.search(r'\b(\d{3,12})\s*$', display_name)
     return m.group(1) if m else None
 
+def _extract_role(display_name: str) -> str | None:
+    """
+    Extrae el rol de un apodo tipo '🧰 APR | Mario Ramos | 17343'
+    Devuelve 'APR' en este ejemplo.
+    """
+    if not display_name:
+        return None
+
+    parts = display_name.split("|")
+    if not parts:
+        return None
+
+    first = parts[0].strip()
+    first_clean = re.sub(r"[^\w\s]", "", first).strip()
+
+    # Roles válidos (ajústalos a tu servidor)
+    valid_roles = ["REC", "APR", "SUBG", "SUBGER", "GER", "GER GEN", "PROP"]
+    for role in valid_roles:
+        if role in first_clean.upper():
+            return role
+
+    return None
+
 
 async def setup_views(bot: discord.Client):
     # Identificación
@@ -235,9 +258,12 @@ async def setup_views(bot: discord.Client):
                 # Guardar/actualizar en Supabase: crear usuario si no existe y aumentar contador
                 try:
                     server_id = str(interaction.guild.id) if interaction.guild else ""
-                    rol = historial_tuneos[uid].get("rol", "")
                     target_user_id, clean_name = normalize_user_identity(interaction.user.display_name, uid)
                     nombre = historial_tuneos[uid].get("nombre") or clean_name
+
+                    # Nuevo: extraer rol desde el apodo
+                    rol = _extract_role(interaction.user.display_name) or historial_tuneos[uid].get("rol", "")
+
                     await supabase_service.create_or_update_user(
                         user_id=str(target_user_id),
                         nombre=nombre,

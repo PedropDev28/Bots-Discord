@@ -53,10 +53,12 @@ class SupabaseService:
             data = {
                 "user_id": user_id,
                 "nombre": nombre,
-                "rol": rol,
                 "server_id": server_id,
                 "updated_at": datetime.utcnow().isoformat()
             }
+            
+            if rol:  # 👈 solo añadimos si no está vacío
+                data["rol"] = rol
             
             # Usar upsert para crear o actualizar
             result = client.table("users").upsert(data).execute()
