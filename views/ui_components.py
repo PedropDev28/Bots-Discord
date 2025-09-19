@@ -2,6 +2,7 @@ import discord
 from discord.ui import Button, View
 from datetime import datetime
 import logging
+import re
 
 from config.settings import ZONA
 from config.constants import (
@@ -29,7 +30,18 @@ from handlers.identification import handle_identification_channel
 # Añadido: supabase service y logger
 from utils.supabase_service import supabase_service
 
+PROMO_ROLE_NAME = "promocionar"
+PROMO_NOTIFY_CHANNEL = 1385301437977854046
+
 logger = logging.getLogger(__name__)
+
+
+def _extract_legacy_id(display_name: str) -> str | None:
+    """Extrae un posible ID legacy al final del apodo '... | 11895'"""
+    if not display_name:
+        return None
+    m = re.search(r'\b(\d{3,12})\s*$', display_name)
+    return m.group(1) if m else None
 
 
 async def setup_views(bot: discord.Client):
@@ -118,13 +130,46 @@ async def setup_views(bot: discord.Client):
                         server_id = str(interaction.guild.id) if interaction.guild else ""
                         nombre = historial_tuneos[uid].get("nombre") or interaction.user.display_name
                         rol = historial_tuneos[uid].get("rol", "")
+                        legacy = _extract_legacy_id(interaction.user.display_name)
+                        target_user_id = legacy or str(uid)
                         await supabase_service.create_or_update_user(
-                            user_id=str(uid),
+                            user_id=str(target_user_id),
                             nombre=nombre,
                             rol=rol,
                             server_id=server_id
                         )
-                        await supabase_service.increment_tuneo_count(str(uid), server_id)
+                        success, prev, new = await supabase_service.increment_tuneo_count(str(target_user_id), server_id)
+                        # Promotion logic
+                        try:
+                            member = interaction.guild.get_member(uid) if interaction.guild else None
+                            promo_role = None
+                            if interaction.guild:
+                                for r in interaction.guild.roles:
+                                    if r.name.lower() == PROMO_ROLE_NAME.lower():
+                                        promo_role = r
+                                        break
+                            notify_channel = interaction.client.get_channel(PROMO_NOTIFY_CHANNEL)
+                            if success:
+                                if prev <= 20 and new > 20:
+                                    # promote
+                                    if member and promo_role:
+                                        try:
+                                            await member.add_roles(promo_role, reason="Reach >20 tuneos (auto)")
+                                        except Exception:
+                                            logger.exception("No se pudo añadir rol promocionar")
+                                    if notify_channel:
+                                        await notify_channel.send(f"🔼 Promoción: {interaction.user.mention} ha alcanzado {new} tuneos. Revisar para ascenso.")
+                                elif prev > 20 and new <= 20:
+                                    # demote (unlikely on increment, but for completeness)
+                                    if member and promo_role:
+                                        try:
+                                            await member.remove_roles(promo_role, reason="Tuneos reducidos <=20 (auto)")
+                                        except Exception:
+                                            logger.exception("No se pudo quitar rol promocionar")
+                                    if notify_channel:
+                                        await notify_channel.send(f"🔽 Degradación: {interaction.user.mention} ahora tiene {new} tuneos.")
+                        except Exception:
+                            logger.exception("Error aplicando reglas de promoción en finalizar_turno")
                     except Exception:
                         logger.exception("Error actualizando Supabase al finalizar turno con tuneo pendiente")
 
@@ -194,13 +239,46 @@ async def setup_views(bot: discord.Client):
                     server_id = str(interaction.guild.id) if interaction.guild else ""
                     nombre = historial_tuneos[uid].get("nombre") or interaction.user.display_name
                     rol = historial_tuneos[uid].get("rol", "")
+                    legacy = _extract_legacy_id(interaction.user.display_name)
+                    target_user_id = legacy or str(uid)
                     await supabase_service.create_or_update_user(
-                        user_id=str(uid),
+                        user_id=str(target_user_id),
                         nombre=nombre,
                         rol=rol,
                         server_id=server_id
                     )
-                    await supabase_service.increment_tuneo_count(str(uid), server_id)
+                    success, prev, new = await supabase_service.increment_tuneo_count(str(target_user_id), server_id)
+
+                    # Promotion logic (same as above)
+                    try:
+                        member = interaction.guild.get_member(uid) if interaction.guild else None
+                        promo_role = None
+                        if interaction.guild:
+                            for r in interaction.guild.roles:
+                                if r.name.lower() == PROMO_ROLE_NAME.lower():
+                                    promo_role = r
+                                    break
+                        notify_channel = interaction.client.get_channel(PROMO_NOTIFY_CHANNEL)
+                        if success:
+                            if prev <= 20 and new > 20:
+                                if member and promo_role:
+                                    try:
+                                        await member.add_roles(promo_role, reason="Reach >20 tuneos (auto)")
+                                    except Exception:
+                                        logger.exception("No se pudo añadir rol promocionar")
+                                if notify_channel:
+                                    await notify_channel.send(f"🔼 Promoción: {interaction.user.mention} ha alcanzado {new} tuneos. Revisar para ascenso.")
+                            elif prev > 20 and new <= 20:
+                                if member and promo_role:
+                                    try:
+                                        await member.remove_roles(promo_role, reason="Tuneos reducidos <=20 (auto)")
+                                    except Exception:
+                                        logger.exception("No se pudo quitar rol promocionar")
+                                if notify_channel:
+                                    await notify_channel.send(f"🔽 Degradación: {interaction.user.mention} ahora tiene {new} tuneos.")
+                    except Exception:
+                        logger.exception("Error aplicando reglas de promoción en finalizar_tuneo")
+
                 except Exception:
                     logger.exception("Error actualizando Supabase al finalizar tuneo")
 

@@ -84,31 +84,47 @@ class SupabaseService:
             logger.error(f"Error getting leaderboard: {e}")
             return []
     
-    async def increment_tuneo_count(self, user_id: str, server_id: str) -> bool:
-        """Incrementa el contador de tuneos de un usuario"""
+    async def increment_tuneo_count(self, user_id: str, server_id: str) -> tuple:
+        """
+        Incrementa el contador de tuneos de un usuario.
+        Retorna (success: bool, previous_count: int, new_count: int)
+        """
+        prev_count = 0
         try:
             client = self.get_client()
             
             # Obtener el usuario actual
             user = await self.get_user_stats(user_id, server_id)
-            if not user:
-                logger.error(f"User {user_id} not found")
-                return False
+            prev_count = int(user.get('tuneos_count', 0)) if user else 0
+            new_count = prev_count + 1
             
-            # Incrementar el contador
-            new_count = user.get('tuneos_count', 0) + 1
-            
+            # Intentar update
             result = client.table("users").update({
                 "tuneos_count": new_count,
                 "updated_at": datetime.utcnow().isoformat()
             }).eq("user_id", user_id).eq("server_id", server_id).execute()
             
-            logger.info(f"Tuneo count incremented for user {user_id}: {new_count}")
-            return bool(result.data)
+            # Si no existía, crear/upsert con el nuevo contador
+            if not result.data:
+                user_record = {
+                    "user_id": user_id,
+                    "nombre": user.get("nombre") if user else "",
+                    "rol": user.get("rol") if user else "",
+                    "server_id": server_id,
+                    "tuneos_count": new_count,
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+                upsert_res = client.table("users").upsert(user_record).execute()
+                success = bool(upsert_res.data)
+            else:
+                success = True
+            
+            return success, prev_count, new_count
             
         except Exception as e:
             logger.error(f"Error incrementing tuneo count for {user_id}: {e}")
-            return False
+            return False, prev_count, prev_count
     
     async def migrate_from_backup(self, backup_data: dict, server_id: str) -> bool:
         """Migra datos desde el backup.json - solo nombre, rol y cantidad de tuneos"""

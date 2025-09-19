@@ -58,21 +58,48 @@ async def enviar_anuncio(bot: discord.Client):
     canal = safe_get_channel(bot, CANAL_ANUNCIOS)
     if canal is None:
         return
+
+    PROMO_THRESHOLD = 20
+    PROMO_NOTIFY_CHANNEL_ID = 1385301437977854046
+
     embed = discord.Embed(
         title="📢 ANUNCIO IMPORTANTE – MECÁNICOS OVERSPEED 🔧🚗💨",
         description=(
             "Nuestro bot ya está operativo para gestionar **turnos y tuneos**.\n\n"
-            "✅ **Todo se maneja con botones, no con comandos.**"
+            "✅ **Todo se maneja con botones, no con comandos.**\n\n"
+            "Pulsa el botón de identificación para registrarte como mecánico y usa los botones de "
+            "turnos/tuneos para gestionar tu actividad."
         ),
         color=discord.Color.orange(),
     )
     embed.add_field(
         name="📝 Identificación",
-        value="Consulta el canal de identificación y pulsa el botón para identificarte como Mecánico.",
+        value="Pulsa el botón en el canal de identificación para completar tu ficha de mecánico.",
         inline=False,
     )
-    embed.set_footer(text="🔧 Overspeed RP | Taller Oficial")
+    embed.add_field(
+        name="⏱️ Turnos y 🔧 Tuneos",
+        value="Inicia y finaliza turnos con los botones. Añade tuneos usando los botones de precios y finalízalos cuando termines.",
+        inline=False,
+    )
+    embed.add_field(
+        name="📈 Promociones automáticas (info para todos)",
+        value=(
+            f"Cuando un mecánico supera los {PROMO_THRESHOLD} tuneos, el sistema lo marcará para revisión.\n"
+            f"Las notificaciones de subida/degradación de rango se publican en el canal <#{PROMO_NOTIFY_CHANNEL_ID}> "
+            "para que el staff revise los ascensos."
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="🔧 Overspeed RP | Taller Oficial — Usa los botones en los canales correspondientes.")
     try:
         await canal.send(embed=embed)
     except Exception:
-        pass
+        try:
+            # Fallback: enviar texto simple si embed falla
+            await canal.send(
+                "El bot está activo para gestionar turnos y tuneos. Pulsa el botón de identificación en el canal correspondiente. "
+                f"Promociones automáticas al superar {PROMO_THRESHOLD} tuneos (notificaciones en <#{PROMO_NOTIFY_CHANNEL_ID}>)."
+            )
+        except Exception:
+            pass
