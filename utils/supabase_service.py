@@ -46,9 +46,6 @@ class SupabaseService:
         try:
             client = self.get_client()
             
-            # Verificar si el usuario existe
-            existing = client.table("users").select("*").eq("user_id", user_id).eq("server_id", server_id).execute()
-            
             data = {
                 "user_id": user_id,
                 "nombre": nombre,
@@ -57,15 +54,9 @@ class SupabaseService:
                 "updated_at": datetime.utcnow().isoformat()
             }
             
-            if existing.data:
-                # Actualizar usuario existente
-                result = client.table("users").update(data).eq("user_id", user_id).eq("server_id", server_id).execute()
-                logger.info(f"User {user_id} updated")
-            else:
-                # Crear nuevo usuario
-                data["created_at"] = datetime.utcnow().isoformat()
-                result = client.table("users").insert(data).execute()
-                logger.info(f"User {user_id} created")
+            # Usar upsert para crear o actualizar
+            result = client.table("users").upsert(data).execute()
+            logger.info(f"User {user_id} created/updated")
             
             return bool(result.data)
             
@@ -93,54 +84,63 @@ class SupabaseService:
             logger.error(f"Error getting leaderboard: {e}")
             return []
     
-    async def add_tuneo(self, user_id: str, server_id: str, car_name: str = None) -> bool:
-        """Añade un tuneo completado"""
+    async def increment_tuneo_count(self, user_id: str, server_id: str) -> bool:
+        """Incrementa el contador de tuneos de un usuario"""
         try:
             client = self.get_client()
-            data = {
-                "user_id": user_id,
-                "server_id": server_id,
-                "car_name": car_name or "Vehículo no especificado",
-                "tuning_data": {},
-                "status": "completado",
-                "created_at": datetime.utcnow().isoformat()
-            }
             
-            result = client.table("tuneos").insert(data).execute()
-            logger.info(f"Tuneo added for user {user_id}")
+            # Obtener el usuario actual
+            user = await self.get_user_stats(user_id, server_id)
+            if not user:
+                logger.error(f"User {user_id} not found")
+                return False
+            
+            # Incrementar el contador
+            new_count = user.get('tuneos_count', 0) + 1
+            
+            result = client.table("users").update({
+                "tuneos_count": new_count,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("user_id", user_id).eq("server_id", server_id).execute()
+            
+            logger.info(f"Tuneo count incremented for user {user_id}: {new_count}")
             return bool(result.data)
             
         except Exception as e:
-            logger.error(f"Error adding tuneo for {user_id}: {e}")
+            logger.error(f"Error incrementing tuneo count for {user_id}: {e}")
             return False
     
     async def migrate_from_backup(self, backup_data: dict, server_id: str) -> bool:
-        """Migra datos desde el backup.json (para usar en Railway)"""
+        """Migra datos desde el backup.json - solo nombre, rol y cantidad de tuneos"""
         try:
             historial = backup_data.get("historial_tuneos", {})
             migrated_count = 0
             
-            for user_id, user_data in historial.items():
-                # Crear/actualizar usuario
-                success = await self.create_or_update_user(
-                    user_id=user_id,
-                    nombre=user_data["nombre"],
-                    rol=user_data["rol"],
-                    server_id=server_id
-                )
-                
-                if success:
-                    # Crear registros de tuneos históricos
-                    tuneos_count = user_data.get("tuneos", 0)
-                    for i in range(tuneos_count):
-                        await self.add_tuneo(
-                            user_id=user_id,
-                            server_id=server_id,
-                            car_name=f"Tuneo histórico #{i + 1}"
-                        )
-                    migrated_count += 1
-                    logger.info(f"Migrated user {user_data['nombre']} with {tuneos_count} tuneos")
+            client = self.get_client()
             
+            for user_id, user_data in historial.items():
+                try:
+                    # Solo crear el usuario con los datos básicos
+                    user_record = {
+                        "user_id": user_id,
+                        "nombre": user_data["nombre"],
+                        "rol": user_data["rol"],
+                        "tuneos_count": user_data["tuneos"],
+                        "server_id": server_id,
+                        "created_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                    
+                    result = client.table("users").upsert(user_record).execute()
+                    
+                    if result.data:
+                        migrated_count += 1
+                        logger.info(f"Migrated: {user_data['nombre']} - {user_data['tuneos']} tuneos")
+                
+                except Exception as e:
+                    logger.error(f"Error migrating user {user_id}: {e}")
+                    continue
+        
             logger.info(f"Migration completed: {migrated_count} users migrated")
             return True
             

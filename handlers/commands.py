@@ -2,6 +2,7 @@ import io
 import discord
 import matplotlib.pyplot as plt
 from discord.ext import commands
+import logging
 
 from config.constants import (
     ROLES_HISTORIAL_TOTAL,
@@ -9,9 +10,11 @@ from config.constants import (
     ROL_PROPIETARIO,
     CANAL_LOGS,
 )
-from utils.helpers import historial_tuneos, turnos_activos, tuneos_activos, safe_get_channel
+from utils.helpers import turnos_activos, tuneos_activos, safe_get_channel
 from utils.database import save_backup, load_backup
+from utils.supabase_service import supabase_service
 
+logger = logging.getLogger(__name__)
 
 def register_commands(bot: commands.Bot):
     @bot.command(name="help")
@@ -61,7 +64,13 @@ def register_commands(bot: commands.Bot):
     @bot.command()
     @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
     async def historial(ctx):
-        if not historial_tuneos:
+        if ctx.guild is None:
+            await ctx.send("❌ Este comando solo puede ejecutarse en un servidor.")
+            return
+
+        # Traer todos los usuarios del servidor (limite alto para simular "todos")
+        users = await supabase_service.get_leaderboard(str(ctx.guild.id), limit=1000)
+        if not users:
             embed = discord.Embed(
                 title="📋 Historial de tuneos",
                 description="No hay tuneos registrados.",
@@ -69,8 +78,11 @@ def register_commands(bot: commands.Bot):
             )
             await ctx.send(embed=embed)
             return
+
         lines = []
-        for uid, datos in historial_tuneos.items():
+        for u in users:
+            uid = u.get("user_id")
+            tuneos = u.get("tuneos_count", 0)
             try:
                 uid_int = int(uid)
             except Exception:
@@ -79,15 +91,14 @@ def register_commands(bot: commands.Bot):
             if miembro:
                 apodo = miembro.display_name
             else:
-                rol = datos.get("rol", "")
-                nombre = datos.get("nombre", "")
+                rol = u.get("rol", "")
+                nombre = u.get("nombre", "")
                 if rol and nombre:
                     apodo = f"{rol} | {nombre}"
                 elif nombre:
                     apodo = nombre
                 else:
                     apodo = str(uid)
-            tuneos = datos.get("tuneos", 0)
             lines.append(f"{apodo} | {uid}: {tuneos} tuneos")
 
         embed = discord.Embed(
@@ -238,7 +249,13 @@ def register_commands(bot: commands.Bot):
     @bot.command()
     @commands.has_any_role(*ROLES_HISTORIAL_TOTAL)
     async def dashboard(ctx):
-        if not historial_tuneos:
+        if ctx.guild is None:
+            await ctx.send("❌ Este comando solo puede ejecutarse en un servidor.")
+            return
+
+        TOP_N = 10
+        users = await supabase_service.get_leaderboard(str(ctx.guild.id), limit=TOP_N)
+        if not users:
             embed = discord.Embed(
                 title="Sin datos",
                 description="No hay datos de tuneos registrados.",
@@ -247,13 +264,10 @@ def register_commands(bot: commands.Bot):
             await ctx.send(embed=embed)
             return
 
-        TOP_N = 10
-        items = sorted(historial_tuneos.items(), key=lambda x: x[1].get('tuneos', 0), reverse=True)
-        top_items = items[:TOP_N]
-
         nombres = []
         datos = []
-        for uid, datos_v in top_items:
+        for u in users:
+            uid = u.get("user_id")
             try:
                 uid_int = int(uid)
             except Exception:
@@ -262,14 +276,9 @@ def register_commands(bot: commands.Bot):
             if miembro:
                 nombre = miembro.display_name
             else:
-                nombre = datos_v.get('nombre') or str(uid)
+                nombre = u.get('nombre') or str(uid)
             nombres.append(nombre)
-            datos.append(datos_v.get('tuneos', 0))
-
-        if not datos:
-            embed = discord.Embed(title="Sin datos", description="No hay tuneos para mostrar.", color=discord.Color.red())
-            await ctx.send(embed=embed)
-            return
+            datos.append(u.get('tuneos_count', 0))
 
         try:
             import seaborn as sns
@@ -303,7 +312,8 @@ def register_commands(bot: commands.Bot):
         buf.seek(0)
         plt.close(fig)
 
-        total_tuneos = sum(v.get('tuneos', 0) for _, v in historial_tuneos.items())
+        # Total de tuneos calculado a partir de usuarios traídos (si quieres total de todo el servidor, puedes aumentar el limit)
+        total_tuneos = sum(u.get('tuneos_count', 0) for u in users)
         top1 = nombres[0] if nombres else 'N/A'
         embed = discord.Embed(
             title="📊 Dashboard de actividad",
@@ -353,4 +363,14 @@ def register_commands(bot: commands.Bot):
                 color=discord.Color.green(),
             )
             await ctx.send(embed=embed)
+            # asegurar existencia en supabase
+            try:
+                await supabase_service.create_or_update_user(
+                    user_id=str(ctx.author.id),
+                    nombre=ctx.author.display_name,
+                    rol="🧰 APR",
+                    server_id=str(ctx.guild.id)
+                )
+            except Exception as e:
+                logger.exception("Error al asegurar usuario en supabase tras identificar")
             return
