@@ -75,6 +75,14 @@ def create_bot() -> commands.Bot:
 
     # Registrar comandos
     register_commands(bot)
+
+    # Añadir Cog directamente
+    try:
+        from handlers.admin_commands import AdminCommands
+        bot.add_cog(AdminCommands(bot))
+        logger.info("AdminCommands cog añadido directamente")
+    except Exception:
+        logger.exception("No se pudo añadir AdminCommands directamente")
     return bot
 
 
