@@ -1,18 +1,26 @@
 {
   "historial_tuneos": {
-    "17701": {"nombre": "Frigelio Sanchez", "rol": "🧰 APR", "tuneos": 15},
+    "17701": {"nombre": "Frigelio Sanchez", "rol": "📋 REC", "tuneos": 32},
     "11895": {"nombre": "Gencho", "rol": "🏢PROP", "tuneos": 1},
     "11933": {"nombre": "elios", "rol": "🧰 APR", "tuneos": 5},
-    "13679": {"nombre": "Cristian Ques", "rol": "⭐ SUBG", "tuneos": 9},
+    "13679": {"nombre": "Cristian Ques", "rol": "⭐ SUBG", "tuneos": 15},
     "18414": {"nombre": "Ramón Romero", "rol": "🧰 APR", "tuneos": 7},
-    "4615":  {"nombre": "ionut rumañol", "rol": "🌟 GER GEN", "tuneos": 2},
-    "17885": {"nombre": "Juan", "rol": "🧰 APR", "tuneos": 0},
-    "18463": {"nombre": "Petar Ganev", "rol": "🧰 APR", "tuneos": 4},
-    "13653": {"nombre": "Cristian", "rol": "⭐ SUBGER", "tuneos": 4},
+    "4615":  {"nombre": "ionut rumañol", "rol": "🌟 GER GEN", "tuneos": 3},
+    "17885": {"nombre": "Juan", "rol": "🧰 APR", "tuneos": 5},
+    "18463": {"nombre": "Petar Ganev", "rol": "🧰 APR", "tuneos": 8},
+    "13653": {"nombre": "Cristian", "rol": "⭐ SUBGER", "tuneos": 26},
     "18335": {"nombre": "nick miller", "rol": "🧰 APR", "tuneos": 1},
     "15920": {"nombre": "yago", "rol": "🧰 APR", "tuneos": 3},
     "17357": {"nombre": "Diego Cruz", "rol": "🧰 APR", "tuneos": 3},
-    "17693": {"nombre": "nano", "rol": "🧰 APR", "tuneos": 6}
+    "17693": {"nombre": "nano", "rol": "🧰 APR", "tuneos": 6},
+    "18000": {"nombre": "Javier Ramos", "rol": "🧰 APR", "tuneos": 0},
+    "11536": {"nombre": "Cuervo", "rol": "⭐ GER", "tuneos": 2},
+    "17707": {"nombre": "Ronal Santos", "rol": "🧰 APR", "tuneos": 10},
+    "16112": {"nombre": "Saturnino", "rol": "🧰 APR", "tuneos": 5},
+    "18072": {"nombre": "Gonzalo", "rol": "🧰 APR", "tuneos": 11},
+    "18763": {"nombre": "Jarracufiño", "rol": "🧰 APR", "tuneos": 0},
+    "16607": {"nombre": "Juan Corte", "rol": "📋 REC", "tuneos": 0},
+    "19427": {"nombre": "Alejandro", "rol": "🧰 APR", "tuneos": 0}
   },
   "turnos_activos": {},
   "tuneos_activos": {}

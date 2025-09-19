@@ -1,6 +1,8 @@
 import os
 import discord
 from discord.ext import commands
+from dotenv import load_dotenv
+import logging
 
 from config.settings import INTENTS, PREFIX
 from handlers.commands import register_commands
@@ -8,7 +10,10 @@ from tasks.periodic import start_tasks
 from views.ui_components import setup_views
 from utils.helpers import enviar_anuncio
 from config.constants import CANAL_IDENTIFICACION
+from utils.supabase_service import supabase_service
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
 
 def create_bot() -> commands.Bot:
     bot = commands.Bot(command_prefix=PREFIX, intents=INTENTS)
@@ -21,6 +26,16 @@ def create_bot() -> commands.Bot:
     @bot.event
     async def on_ready():
         print(f"Bot conectado como {bot.user}")
+
+        # Probar conexión con Supabase
+        try:
+            connection_ok = await supabase_service.test_connection()
+            if connection_ok:
+                print("✅ Supabase connection established")
+            else:
+                print("❌ Supabase connection failed")
+        except Exception as e:
+            print(f"❌ Supabase error: {e}")
 
         # Iniciar tareas periódicas
         try:

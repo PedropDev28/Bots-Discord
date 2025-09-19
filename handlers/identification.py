@@ -241,33 +241,6 @@ async def handle_identification_channel(bot, user, guild, canal_ident):
         except Exception:
             pass
 
-        # Registrar en hilo del canal de identificación
-        try:
-            thread_name = "Identificaciones Mecánicos"
-            thread = None
-            for th in canal_ident.threads:
-                if th.name == thread_name:
-                    thread = th
-                    break
-            if thread is None:
-                try:
-                    thread = await canal_ident.create_thread(
-                        name=thread_name,
-                        type=discord.ChannelType.private_thread,
-                        invitable=False,
-                    )
-                    await thread.edit(invitable=False)
-                except Exception:
-                    thread = None
-            if thread:
-                try:
-                    msg = await thread.send(f"{user.mention} identificado como: **{nuevo_apodo}**")
-                    await msg.add_reaction("✅")
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
         # Mensaje de éxito que se borra a los 5 segundos
         embed_exito = discord.Embed(
             title="✅ Identificación Completada",
